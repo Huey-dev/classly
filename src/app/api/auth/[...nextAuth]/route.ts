@@ -4,8 +4,7 @@
 // import prisma from "../../../../../lib/prisma" 
 
 // const handler = NextAuth({
-//   adapter: PrismaAdapter(prisma)
+
   
 // });
 
-// export { handler as GET, handler as POST };
