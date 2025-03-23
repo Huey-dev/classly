@@ -1,10 +1,3 @@
-// import NextAuth from 'next-auth';
-// import { PrismaAdapter } from '@next-auth/prisma-adapter';
-// import EmailProvider from 'next-auth/providers/email';
-// import prisma from "../../../../../lib/prisma" 
+import { handlers } from "../../../../../auth";
 
-// const handler = NextAuth({
-
-  
-// });
-
+export const { GET, POST } = handlers;
