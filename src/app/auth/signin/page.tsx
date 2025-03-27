@@ -1,16 +1,32 @@
-import SigninBtn from "../../component/SigninBtn";
+"use client";
 
-export default function Page() {
+import { useTransition } from "react";
+import { signInAction } from "@/app/actions/signInAction";
+
+export default function SigninBtn() {
+  const [isPending, startTransition] = useTransition();
+
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-gray-100 p-4">
-      <div className="w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl bg-white rounded-lg shadow-lg p-8">
-        <h1 className="text-3xl font-bold text-center text-blue-600 mb-4">
-          Welcome!
-        </h1>
-        <p className="text-center text-gray-600 mb-6">
-          Enter your email to sign in and unlock your digital classroom.
-        </p>
-        <SigninBtn />
+    <div className="flex p-4 justify-center items-center h-screen bg-gray-300"> {/* Added background for visual clarity */}
+      <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md"> {/* The Wrapper */}
+        <form
+          action={signInAction}
+          className="flex flex-col gap-4"
+        >
+          <input
+            name="email"
+            type="email"
+            placeholder="Enter your email"
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <button
+            type="submit"
+            className="w-full bg-blue-600 p-4 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            {isPending ? "Processing..." : "Sign In or Create Account"}
+          </button>
+        </form>
       </div>
     </div>
   );

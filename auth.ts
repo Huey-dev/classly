@@ -14,8 +14,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     secret: process.env.AUTH_SECRET,
     pages: {
-        newUser: "/",   
-        signIn: "/auth/signin",                
+        newUser: "/welcome",   
+                        
     },
     callbacks: {
         async redirect({ url, baseUrl }) {
