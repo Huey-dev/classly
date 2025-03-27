@@ -1,10 +1,8 @@
 "use client";
-
-import { useTransition } from "react";
 import { signInAction } from "@/app/actions/signInAction";
 
 export default function SigninBtn() {
-  const [isPending, startTransition] = useTransition();
+  
 
   return (
     <div className="flex p-4 justify-center items-center h-screen bg-gray-300"> {/* Added background for visual clarity */}
@@ -24,7 +22,7 @@ export default function SigninBtn() {
             type="submit"
             className="w-full bg-blue-600 p-4 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
           >
-            {isPending ? "Processing..." : "Sign In or Create Account"}
+           Sign In or Create Account
           </button>
         </form>
       </div>
