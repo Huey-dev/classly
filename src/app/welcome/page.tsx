@@ -9,12 +9,12 @@ export default function OnboardingPage() {
           What’s your next move? Continue browsing our content or create your own digital classroom.
         </p>
         <div className="flex flex-col md:flex-row gap-4 justify-center">
-          <Link href="/browse">
+          <Link href="/">
             <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
               Continue Browsing
             </button>
           </Link>
-          <Link href="/teacher/create">
+          <Link href="/onboarding">
             <button className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">
               Create a Classroom
             </button>
