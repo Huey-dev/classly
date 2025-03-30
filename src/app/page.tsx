@@ -1,12 +1,24 @@
-import React from 'react'
+"use client";
+import { useRouter } from "next/navigation";
 
-const page = () => {
+export default function HomePage() {
+  const router = useRouter();
+
+  const handleSignIn = () => {
+    router.push("/api/auth/signin");
+  };
+
   return (
-    <div>page welcome select what you want ot do</div>
-  )
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-pink-200 via-yellow-200 to-green-200">
+      <button
+        onClick={handleSignIn}
+        className="px-6 py-3 text-xl font-semibold bg-white text-gray-800 rounded-lg shadow-md transition-transform transform hover:scale-105 hover:shadow-xl sm:px-8 sm:py-4 sm:text-2xl"
+      >
+        Sign In
+      </button>
+    </div>
+  );
 }
-
-export default page
 
 // import Image from "next/image";
 
