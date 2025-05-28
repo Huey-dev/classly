@@ -20,25 +20,23 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
 
   return (
     <form onSubmit={handleSubmit}>
-      <input
-        name="email"
-        value={formData.email}
-        onChange={handleChange}
-        placeholder="Email"
-        type="email"
-        disabled={loading}
-        className="border p-2 w-full"
-      />
+     <label>Email</label>
+        <input
+          type="email"
+          name="email" 
+          value={formData.email}
+          onChange={handleChange}
+          className="border p-2 w-full"
+        />
     
-      <input
-        name="password"
-        value={formData.password}
-        onChange={handleChange}
-        placeholder="Password"
-        type="password"
-        disabled={loading}
-        className="border p-2 w-full"
-      ></input>
+       <label>Password</label>
+        <input
+          type="password"
+          name="password" 
+          value={formData.password}
+          onChange={handleChange}
+          className="border p-2 w-full"
+        />
       {error && <p style={{ color: "red" }}>{error}</p>}
       <button type="submit" disabled={loading}>
         {loading ? "Signing up..." : "Sign Up"}
