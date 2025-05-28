@@ -1,4 +1,3 @@
-// SignupForm.tsx
 "use client";
 
 export default function SignupForm() {
