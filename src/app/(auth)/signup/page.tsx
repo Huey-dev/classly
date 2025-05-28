@@ -1,14 +1,37 @@
-import React from 'react'
-import SignupForm from './component/SignupForm'
-const page = () => {
+"use client"
+
+
+export default function Page() {
   return (
-  <div>
-      <h1>Signup</h1>
-      <SignupForm 
-      
-      />
+    <div className="max-w-md mx-auto p-6">
+      <h1 className="text-4xl font-extrabold mt-16 text-center">Create an account</h1>
+      {/* TODO: Insert <SignupForm /> */}
     </div>
-  )
+  );
 }
 
-export default page
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
