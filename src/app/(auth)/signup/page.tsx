@@ -2,34 +2,44 @@
 import React, { useState } from "react";
 import SignupForm from "./component/SignupForm";
 import { SignupFormData } from "../../../../type";
-
+import { useRouter } from 'next/navigation';
 const Page = () => {
-  const [formData, setFormData] = useState<SignupFormData>({
-    email: "",
-    password: "",
-  });
-
-  const [loading, setLoading] = useState(false);
+  // State to manage form submission status
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<boolean>(false);
+  // useRouter hook to handle navigation
+  const router = useRouter();
+  // Function to handle form submission
+  const handleSubmit = async (formData: SignupFormData) => {
+    
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
 
-  // const handleChange = (
-  //   e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  // ) => {
-  //   const { name, value } = e.target;
-  //   setFormData((prev) => ({ ...prev, [name]: value }));
-  // };
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
 
- async function handleSubmit() {
-  fetch("api/auth/signup", {
-    method:"POST",
-    body: JSON.stringify({
-      data: formData,
-    }),
-    headers: {
-      "Content-Type": "application/json",
-    },
-  })
- }
+      const data = await response.json();
+
+      if (response.ok) {
+        setSuccess(true);
+        console.log("Signup successful:", data);
+        router.push('/');
+        // Optionally redirect or show a success message
+      } else {
+        setError(data.error || "Signup failed");
+      }
+    } catch (err) {
+      setError("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-md mx-auto p-6">
@@ -38,6 +48,7 @@ const Page = () => {
         onSubmit={handleSubmit}
         loading={loading}
         error={error}
+        success={success}
       />
     </div>
   );
