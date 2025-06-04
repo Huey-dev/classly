@@ -33,8 +33,9 @@ export async function POST(request: NextRequest) {
                 password: hashedPassword,
             },
         });
+        const { password: _, ...userWithoutPassword } = newUser;
         // Return the new user
-        return NextResponse.json({ user: newUser }, { status: 201 });
+        return NextResponse.json({ user: userWithoutPassword  }, { status: 201 });
     } catch (error) {
         console.error("Error in signup route:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
