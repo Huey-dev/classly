@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs"
 import { PrismaClient } from '@prisma/client';
+import { comparePasswords, generateSalt, hashPassword } from "../../../../../lib/passwordHasher";
 
 
 const prisma = new PrismaClient();
@@ -18,6 +19,8 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+        const salt = await generateSalt()
+        const hashedPassword = await hashPassword(password, salt);
         // Check if the user already exists
         const existingUser = await prisma.user.findUnique({
             where: { email },
@@ -27,12 +30,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Invalid Credentials", status: 403 })
         }
         //  Check password whether it matches users current password
-        const validPassword = await bcrypt.compare(password, existingUser.password);
+        const validPassword = await comparePasswords(hashedPassword, existingUser.password, salt);
         // If password does not match return error to user
         if (!validPassword) {
             return NextResponse.json({ error: "Invalid Credentials", status: 403 })
         }
-       
+
         return NextResponse.json({
             message: "Login successful",
             user: {
