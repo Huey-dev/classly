@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs"
 import { PrismaClient } from '@prisma/client';
 import { generateSalt, hashPassword } from "../../../../../lib/passwordHasher";
+import { setAuthCookies } from "../../../../../lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
                 password: hashedPassword,
             },
         });
+        await setAuthCookies(newUser.id)
         // return response without password
         const { password: _, ...userWithoutPassword } = newUser;
         // Return the new user with data in the response
