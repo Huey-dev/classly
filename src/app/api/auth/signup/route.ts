@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs"
 import { PrismaClient } from '@prisma/client';
+import { generateSalt, hashPassword } from "../../../../../lib/passwordHasher";
 
 const prisma = new PrismaClient();
 
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "User already exists" }, { status: 409 });
         }
         // Hash the password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const salt = await generateSalt()
+        const hashedPassword = await hashPassword(password, salt);
         // Create a new user
         const newUser = await prisma.user.create({
             data: {
@@ -33,9 +35,10 @@ export async function POST(request: NextRequest) {
                 password: hashedPassword,
             },
         });
+        // return response without password
         const { password: _, ...userWithoutPassword } = newUser;
         // Return the new user
-        return NextResponse.json({ user: userWithoutPassword  }, { status: 201 });
+        return NextResponse.json( { status: 201 });
     } catch (error) {
         console.error("Error in signup route:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
