@@ -19,8 +19,7 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
-        const salt = await generateSalt()
-        const hashedPassword = await hashPassword(password, salt);
+
         // Check if the user already exists
         const existingUser = await prisma.user.findUnique({
             where: { email },
@@ -30,12 +29,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Invalid Credentials", status: 403 })
         }
         //  Check password whether it matches users current password
-        const validPassword = await comparePasswords(hashedPassword, existingUser.password, salt);
+        const validPassword = await comparePasswords(password, existingUser.salt, existingUser.password);
         // If password does not match return error to user
         if (!validPassword) {
             return NextResponse.json({ error: "Invalid Credentials", status: 403 })
         }
 
+        // return user info on successful login
         return NextResponse.json({
             message: "Login successful",
             user: {

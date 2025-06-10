@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
             data: {
                 email,
                 password: hashedPassword,
+                salt
             },
         });
         await setAuthCookies(newUser.id)
