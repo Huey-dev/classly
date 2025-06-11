@@ -19,7 +19,7 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
 
   return (
     <form onSubmit={handleSubmit}>
-     <label>Email</label>
+      <label className="font-light text-sm">Email</label>
         <input
           type="email"
           name="email" 
@@ -28,7 +28,7 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
           className="border p-2 w-full"
         />
     
-       <label>Password</label>
+       <label className="font-light text-sm">Password</label>
         <input
           type="password"
           name="password" 
