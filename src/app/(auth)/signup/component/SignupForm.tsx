@@ -7,40 +7,61 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
     password: "",
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);  
+    onSubmit(formData);
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label className="font-light text-sm">Email</label>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="email" className="font-light text-sm">
+          Email
+        </label>
         <input
+          id="email"
+          name="email"
           type="email"
-          name="email" 
           value={formData.email}
           onChange={handleChange}
-          className="border p-2 w-full"
+          required
+          className="mt-1 block w-full border px-2 py-1 rounded"
+          disabled={loading}
         />
-    
-       <label className="font-light text-sm">Password</label>
+      </div>
+
+      <div>
+        <label htmlFor="password" className="font-light text-sm">
+          Password
+        </label>
         <input
+          id="password"
+          name="password"
           type="password"
-          name="password" 
           value={formData.password}
           onChange={handleChange}
-          className="border p-2 w-full"
+          required
+          className="mt-1 block w-full border px-2 py-1 rounded"
+          disabled={loading}
         />
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      <button type="submit" disabled={loading}>
-        {loading ? "Signing up..." : "Sign Up"}
+      </div>
+
+      {error && <p className="text-red-600">{error}</p>}
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-50"
+      >
+        {loading ? "Signing up…" : "Sign up"}
       </button>
     </form>
   );
-}
-export default SignupForm 
+};
+export default SignupForm;

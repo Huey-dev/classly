@@ -26,7 +26,7 @@ export default function SignInForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="email" className="block font-medium">
+        <label htmlFor="email" className="font-light text-sm">
           Email
         </label>
         <input
@@ -42,7 +42,7 @@ export default function SignInForm({
       </div>
 
       <div>
-        <label htmlFor="password" className="block font-medium">
+        <label htmlFor="password" className="font-light text-sm">
           Password
         </label>
         <input
