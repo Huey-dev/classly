@@ -4,6 +4,7 @@ import SigninForm from "./component/SigninForm";
 import { SignupFormData } from "../../../../type";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 const Page = () => {
   // State to manage form submission status
   const [loading, setLoading] = useState<boolean>(false);
@@ -64,10 +65,12 @@ const Page = () => {
         <div className="text-center mt-4">
           <p className="text-sm text-gray-600">
             Don't have an account?{" "}
-            <a
-              href="/signup"
-              className="font-medium text-blue-600 hover:text-blue-400"
-            />
+            <Link
+              href="/signin"
+              className="font-medium text-blue-600 hover:text-blue-800"
+            >
+              Sign up
+            </Link>
           </p>
         </div>
       </div>
