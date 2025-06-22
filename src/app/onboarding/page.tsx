@@ -8,10 +8,12 @@ const page = () => {
 
   const handleSubmit = async (data: OnboardingFormData) => {
     setLoading(true);
+    console.log(data);
+    setTimeout(() => setLoading(false), 1000);
   };
   return (
-    <div>
-      <h1>Setup Classroom</h1>
+    <div className="bg-white min-h-screen">
+      <h1 className="items-center justify-center flex font-semibold text-xl pt-12 ">Setup wizard</h1>
       <Form onSubmit={handleSubmit} loading={loading} />
     </div>
   );
