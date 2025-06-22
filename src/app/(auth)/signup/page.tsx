@@ -1,7 +1,9 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import SignupForm from "./component/SignupForm";
 import { SignupFormData } from "../../../../type";
+import Toast from "./component/toast";
+import Modal from "./component/modal" ;
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -10,8 +12,11 @@ const Page = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
+  const [showToast, setShowToast] =  useState<boolean>(false)
+  const [showModal, setShowModal] =  useState<boolean>(false)
   // useRouter hook to handle navigation
   const router = useRouter();
+  const timer = useRef<NodeJS.Timeout | null>(null);
   // Function to handle form submission
   const handleSubmit = async (formData: SignupFormData) => {
     setLoading(true);
@@ -28,12 +33,13 @@ const Page = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess(true);
-        console.log("Signup successful:", data);
-        router.push("/");
-        // Optionally redirect or show a success message
+        setShowToast(true);
+        timer.current = setTimeout(() => {
+          setShowToast(false);
+          setShowModal(true);
+        }, 2000);
       } else {
-        setError(data.error || "Signup failed");
+        setError(data.error || "Signup failed.");
       }
     } catch (err) {
       setError("Something went wrong");
@@ -41,9 +47,21 @@ const Page = () => {
       setLoading(false);
     }
   };
+    useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center  bg-white justify-center  px-4 sm:px-6 lg:px-8">
+        {/* display success message */}
+          {showToast && <Toast message="Account created successfully, Please wait...!" />}
+      <Modal
+        show={showModal}
+        onClose={() => router.push("/")}
+        onCreate={() => router.push("/dashboard/create")}
+      />
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-md">
         <div className="flex items-center">
           <Image src="/logo.png" alt="logo" width="37" height="37" />
@@ -69,6 +87,8 @@ const Page = () => {
           </p>
         </div>
       </div>
+    
+ 
     </div>
   );
 };
