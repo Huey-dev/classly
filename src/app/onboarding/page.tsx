@@ -1,9 +1,20 @@
-import React from 'react'
+"use client"
+import React, { useState } from "react";
+import Form from "./component/Form";
+import { OnboardingFormData } from "../../../type";
 
 const page = () => {
-  return (
-    <div>onboarding page</div>
-  )
-}
+  const [loading, setLoading] = useState(false);
 
-export default page
+  const handleSubmit = async (data: OnboardingFormData) => {
+    setLoading(true);
+  };
+  return (
+    <div>
+      <h1>Setup Classroom</h1>
+      <Form onSubmit={handleSubmit} loading={loading} />
+    </div>
+  );
+};
+
+export default page;
