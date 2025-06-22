@@ -62,9 +62,9 @@ export default function SignInForm({
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-50"
+        className="w-full bg-[#ED1C24] text-white py-2 rounded disabled:opacity-50"
       >
-        {loading ? "Signing in…" : "Sign In"}
+        {loading ? "Signing in…" : "Sign in"}
       </button>
     </form>
   );

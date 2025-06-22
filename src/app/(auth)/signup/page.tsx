@@ -13,7 +13,7 @@ const Page = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
   const [showToast, setShowToast] =  useState<boolean>(false)
-  const [showModal, setShowModal] =  useState<boolean>(false)
+  const [showModal, setShowModal] =  useState<boolean>(true)
   // useRouter hook to handle navigation
   const router = useRouter();
   const timer = useRef<NodeJS.Timeout | null>(null);
