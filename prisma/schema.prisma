@@ -7,6 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
 enum Role {
   USER
   TEACHER
@@ -14,8 +15,64 @@ enum Role {
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
+  image         String?
   password      String
+  classroom     Classroom?
+  enrollments   Enrollment[]     
+  reviews       Review[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   role          Role     @default(USER)
+}
+
+model Classroom {
+  id          String     @id @default(cuid())
+  userId      String     @unique
+  name        String
+  description String?
+  image       String?
+  slug        String     @unique     
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  author      User       @relation(fields: [userId], references: [id])
+  contents    Content[]
+  reviews     Review[]
+  students    Enrollment[]   
+}
+
+model Content {
+  id          String     @id @default(cuid())
+  classroomId String
+  title       String
+  description String?
+  type        ContentType   
+  url         String
+  createdAt   DateTime   @default(now())
+  classroom   Classroom  @relation(fields: [classroomId], references: [id])
+}
+
+enum ContentType {
+  VIDEO
+  AUDIO
+  PDF
+}
+
+model Enrollment {
+  id          String      @id @default(cuid())
+  userId      String
+  classroomId String
+  joinedAt    DateTime    @default(now())
+  student     User        @relation(fields: [userId], references: [id])
+  classroom   Classroom   @relation(fields: [classroomId], references: [id])
+}
+
+model Review {
+  id          String        @id @default(cuid())
+  userId      String
+  classroomId String
+  rating      Int       
+  comment     String?
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id])
+  classroom   Classroom     @relation(fields: [classroomId], references: [id])
 }
