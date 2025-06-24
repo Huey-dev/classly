@@ -5,11 +5,10 @@ export default function Page() {
 
   return (
     <div>
-      <Image src="/logo.png" alt="logo" width="37" height="37" />
-      <h1>
-        HomePage is not just a homepage. its your gateway to something
-        beautiful.
-      </h1>
+      <div className="flex items-center">
+        <Image src="/logo.png" alt="logo" width="37" height="37" />
+        <h1>aula</h1>
+      </div>
       <Link
         href="/signup"
         className="font-medium text-blue-600 hover:text-blue-800"
