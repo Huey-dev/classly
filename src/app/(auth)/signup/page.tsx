@@ -3,17 +3,18 @@ import React, { useState, useRef, useEffect } from "react";
 import SignupForm from "./component/SignupForm";
 import { SignupFormData } from "../../../../type";
 import Toast from "./component/toast";
-import Modal from "./component/modal" ;
+import Modal from "./component/modal";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import SignIn from "@/app/component/signin";
 const Page = () => {
   // State to manage form submission status
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
-  const [showToast, setShowToast] =  useState<boolean>(false)
-  const [showModal, setShowModal] =  useState<boolean>(false)
+  const [showToast, setShowToast] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState<boolean>(false);
   // useRouter hook to handle navigation
   const router = useRouter();
   const timer = useRef<NodeJS.Timeout | null>(null);
@@ -47,7 +48,7 @@ const Page = () => {
       setLoading(false);
     }
   };
-    useEffect(() => {
+  useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
@@ -55,8 +56,10 @@ const Page = () => {
 
   return (
     <div className="min-h-screen flex items-center  bg-white justify-center  px-4 sm:px-6 lg:px-8">
-        {/* display success message */}
-          {showToast && <Toast message="Account created successfully, Please wait...!" />}
+      {/* display success message */}
+      {showToast && (
+        <Toast message="Account created successfully, Please wait...!" />
+      )}
       <Modal
         show={showModal}
         onClose={() => router.push("/")}
@@ -85,10 +88,13 @@ const Page = () => {
               Sign in
             </Link>
           </p>
+          <span className="pt-6 text-lg font-semibold">OR</span>
+        </div>
+        <div className="flex item-center justify-center">
+          {" "}
+          <SignIn />
         </div>
       </div>
-    
- 
     </div>
   );
 };
