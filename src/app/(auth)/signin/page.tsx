@@ -5,6 +5,7 @@ import { SignupFormData } from "../../../../type";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import SignIn from "@/app/component/signin";
 const Page = () => {
   // State to manage form submission status
   const [loading, setLoading] = useState<boolean>(false);
@@ -72,6 +73,10 @@ const Page = () => {
               Sign up
             </Link>
           </p>
+        </div>
+        <div className="flex item-center justify-center">
+          {" "}
+          <SignIn />
         </div>
       </div>
     </div>
