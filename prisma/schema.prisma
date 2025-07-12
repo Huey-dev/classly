@@ -18,6 +18,7 @@ model User {
   email         String   @unique
   image         String?
   password      String?
+  hasOnboarded  Boolean  @default(false)
   emailVerified DateTime?
   accounts      Account[]
   sessions      Session[]
