@@ -63,7 +63,7 @@ const Page = () => {
       <Modal
         show={showModal}
         onClose={() => router.push("/")}
-        onCreate={() => router.push("/dashboard/create")}
+        onCreate={() => router.push("/onboarding")}
       />
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-md">
         <div className="flex items-center">
