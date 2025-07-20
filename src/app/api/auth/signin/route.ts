@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             console.error("JWT secret keys not configured!");
             return NextResponse.json({ error: "Internal Server Error - Configuration missing" }, { status: 500 });
         }
-        //  store user id in the token? Keep it minimal. User ID is often sufficient.
+        //  store user id in the token
         const userPayload = { userId: existingUser.id };
         const accessToken = jwt.sign(userPayload, JWT_SECRET, { expiresIn: "15m" });
         const refreshToken = jwt.sign(userPayload, REFRESH_SECRET, { expiresIn: "7d" });
