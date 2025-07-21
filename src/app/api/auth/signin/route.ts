@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
             path: "/",
             sameSite: "strict"
         })
+
+        // success
         return NextResponse.json({
             message: "Login successful",
             user: {

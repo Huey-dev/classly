@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
                 password: hashedPassword,
             },
         });
+        // remove password from result
         const { password: _, ...userWithoutPassword } = newUser;
         // Return the new user
         return NextResponse.json({ user: userWithoutPassword  }, { status: 201 });

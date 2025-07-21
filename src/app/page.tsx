@@ -21,6 +21,13 @@ export default function Page() {
       >
         Sign in
       </Link>
+      <Link
+        href="/signout"
+        className="font-medium text-blue-600 hover:text-blue-800"
+      >
+        Sign out
+      </Link>
+
     </div>
   );
 }
