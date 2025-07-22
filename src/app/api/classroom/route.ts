@@ -52,3 +52,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
+
+
+// GET ALL CLASSROOM
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getUserFromRequest()
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const classrooms = await prisma.classroom.findMany({
+      where: {userId: user.id}
+    })
+    console.log('classroom', classrooms)
+    return NextResponse.json({ classrooms }, { status: 200 });
+  } catch (error) {
+    console.error("error fetching classrooms",error)
+    return NextResponse.json({error: "server error"},{status:500})
+  }
+}
