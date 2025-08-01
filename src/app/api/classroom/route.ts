@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 }
 
 
-// GET ALL CLASSROOM
+// GET ALL CLASSROOMS
 export async function GET(request: NextRequest) {
   try {
     const user = await getUserFromRequest()
@@ -65,7 +65,6 @@ export async function GET(request: NextRequest) {
     const classrooms = await prisma.classroom.findMany({
       where: {userId: user.id}
     })
-    console.log('classroom', classrooms)
     return NextResponse.json({ classrooms }, { status: 200 });
   } catch (error) {
     console.error("error fetching classrooms",error)

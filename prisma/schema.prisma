@@ -23,8 +23,12 @@ model User {
   accounts      Account[]
   sessions      Session[]
   classrooms    Classroom[]
+  classroomLikes ClassroomLike[]
+  contentLikes ContentLike[]
+  contentReviews ContentReview[]
+  contents      Content[]
   enrollments   Enrollment[]     
-  reviews       Review[]
+  reviews       ClassroomReview[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   role          Role     @default(USER)
@@ -72,13 +76,15 @@ model Classroom {
   updatedAt   DateTime   @updatedAt
   author      User       @relation(fields: [userId], references: [id])
   contents    Content[]
-  reviews     Review[]
+  likes       ClassroomLike[]
+  reviews     ClassroomReview[]
   students    Enrollment[]   
   @@unique([name, userId]) 
 }
 
 model Content {
   id          String     @id @default(uuid())
+  userId      String
   classroomId String
   title       String
   description String?
@@ -86,12 +92,76 @@ model Content {
   url         String
   createdAt   DateTime   @default(now())
   classroom   Classroom  @relation(fields: [classroomId], references: [id])
+  author      User       @relation(fields: [userId], references: [id])
+  contentReviews ContentReview[] 
+  likes           ContentLike[]  
+  mediaMetadata   MediaMetadata?
 }
 
 enum ContentType {
   VIDEO
   AUDIO
   PDF
+}
+
+model ClassroomReview {
+  id          String   @id @default(uuid())
+  userId      String
+  classroomId   String
+  rating      Int      
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+  classroom   Classroom  @relation(fields: [classroomId], references: [id])
+  
+  @@unique([userId, classroomId]) 
+}
+model ContentReview {
+  id          String   @id @default(uuid())
+  userId      String
+  contentId   String
+  rating      Int      
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+  content     Content  @relation(fields: [contentId], references: [id])
+
+  @@unique([userId, contentId]) 
+}
+
+model MediaMetadata {
+  id        String   @id @default(uuid())
+  contentId String   @unique
+  duration  Int      
+  size      Int     
+  format    String   
+
+  content   Content  @relation(fields: [contentId], references: [id])
+}
+
+model ClassroomLike {
+  id        String   @id @default(uuid())
+  userId    String
+  classroomId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  classroom Classroom  @relation(fields: [classroomId], references: [id])
+
+  @@unique([userId, classroomId]) 
+}
+model ContentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  contentId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  content   Content  @relation(fields: [contentId], references: [id])
+
+  @@unique([userId, contentId]) 
 }
 
 model Enrollment {
@@ -103,13 +173,3 @@ model Enrollment {
   classroom   Classroom   @relation(fields: [classroomId], references: [id])
 }
 
-model Review {
-  id          String        @id @default(uuid())
-  userId      String
-  classroomId String
-  rating      Int       
-  comment     String?
-  createdAt   DateTime      @default(now())
-  user        User          @relation(fields: [userId], references: [id])
-  classroom   Classroom     @relation(fields: [classroomId], references: [id])
-}

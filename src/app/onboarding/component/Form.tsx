@@ -6,9 +6,10 @@ import { OnboardingFormData } from "../../../../type";
 interface Props {
   onSubmit: (data: OnboardingFormData) => void;
   loading: boolean;
+  error?: string | null
 }
 
-const Form = ({ onSubmit, loading }: Props) => {
+const Form = ({ onSubmit, loading, error }: Props) => {
   const [formData, setFormData] = useState<OnboardingFormData>({
     image: null,
     name: "",
@@ -33,7 +34,9 @@ const Form = ({ onSubmit, loading }: Props) => {
   };
 
   return (
+    
     <div className="flex items-center justify-center px-4 ">
+      {error && <div className="error-message">{error}</div>}
       <form
         onSubmit={handleSubmit}
         className="space-y-6 w-full max-w-md p-6 bg-white rounded-lg shadow-md"
