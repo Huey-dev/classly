@@ -7,7 +7,7 @@ export default function Page() {
     <div>
       <div className="flex items-center">
         <Image src="/logo.png" alt="logo" width="37" height="37" />
-        <h1>aula</h1>
+        <h1>classly</h1>
       </div>
       <Link
         href="/signup"
