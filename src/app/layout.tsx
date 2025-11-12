@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "aula",
+  title: "classly",
   description: "the online classroom",
 };
 
