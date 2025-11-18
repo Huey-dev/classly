@@ -29,10 +29,7 @@ const nextConfig: NextConfig = {
     return config;
   },
 
-  experimental: {
-    serverComponentsExternalPackages: ["@lucid-evolution/lucid"],
-  },
-
+  // REMOVED the Lucid serverComponentsExternalPackages line
   async headers() {
     return [
       {
