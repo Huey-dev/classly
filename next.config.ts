@@ -2,26 +2,25 @@ import type { NextConfig } from "next";
 import type { Configuration } from "webpack";
 
 const nextConfig: NextConfig = {
-  webpack(config: Configuration, { isServer }: { isServer: boolean }) {
-    config.experiments = {
-      ...(config.experiments ?? {}),
-      asyncWebAssembly: true,
-      topLevelAwait: true,
-      layers: true,
-    };
+  webpack: (config: Configuration, { isServer }) => {
+    // --- Ensure module.rules exists ---
+    if (!config.module) config.module = { rules: [] };
+    if (!config.module.rules) config.module.rules = [];
 
+    // --- Add WASM loader ---
+    config.module.rules.push({
+      test: /\.wasm$/i,
+      type: "webassembly/async", // load in browser only
+    });
+
+    // --- Exclude WASM from server build ---
     if (isServer) {
-      // Normalize externals to an array so we can safely spread
-      const existingExternals: any[] = Array.isArray(config.externals)
-        ? config.externals
-        : [];
-
       config.externals = [
-        ...existingExternals,
-        "@lucid-evolution/lucid",
-        "@anastasia-labs/cardano-multiplatform-lib-nodejs",
+        ...(Array.isArray(config.externals) ? config.externals : []),
+        /@lucid-evolution\/uplc/,
       ];
     } else {
+      // Client-side fallback for Node core modules
       config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...(config.resolve.fallback || {}),
@@ -33,10 +32,16 @@ const nextConfig: NextConfig = {
       };
     }
 
+    // Enable async WASM + top-level await
+    config.experiments = {
+      ...(config.experiments || {}),
+      asyncWebAssembly: true,
+      topLevelAwait: true,
+      layers: true,
+    };
+
     return config;
   },
-
-  serverExternalPackages: ["@lucid-evolution/lucid"],
 };
 
 export default nextConfig;
