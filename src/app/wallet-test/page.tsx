@@ -12,14 +12,15 @@ export default function WalletTest() {
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
   const STORAGE_KEY = 'classly_dev_wallet_seed';
 
-  useEffect(() => {
+   useEffect(() => {
     (async () => {
       try {
-        // 1. Check if we already have a seed saved
+        // 1. Dynamic import Lucid and related modules
+        const { Lucid, Blockfrost, generateSeedPhrase } = await import('@lucid-evolution/lucid');
+
+        // 2. Check if we already have a seed saved
         let seed = localStorage.getItem(STORAGE_KEY);
-        
         if (!seed) {
-          // First time - generate new seed
           seed = generateSeedPhrase();
           localStorage.setItem(STORAGE_KEY, seed);
           console.log("🆕 Generated NEW wallet");
@@ -28,41 +29,28 @@ export default function WalletTest() {
         }
 
         setSeedPhrase(seed);
-        console.log("🌱 Seed:", seed);
 
-        // 2. Initialize Lucid
-        const lucid = await Lucid(
-          new Blockfrost(
-            "https://cardano-preprod.blockfrost.io/api/v0",
-            BF_KEY || ""
-          ),
-          "Preprod"
-        );
+        // 3. Initialize Lucid
+        const lucid = await Lucid(new Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", BF_KEY || ""), "Preprod");
 
-        // 3. Select wallet from seed
+        // 4. Select wallet from seed
         lucid.selectWallet.fromSeed(seed);
 
-        // 4. Get address
+        // 5. Get address
         const addr = await lucid.wallet().address();
-        console.log("🏠 Address:", addr);
         setAddress(addr);
 
-        // 5. Get balance
+        // 6. Get balance
         try {
           const utxos = await lucid.wallet().getUtxos();
-          const total = utxos.reduce(
-            (sum, u) => sum + BigInt(u.assets.lovelace || 0),
-            BigInt(0)
-          );
+          const total = utxos.reduce((sum, u) => sum + BigInt(u.assets.lovelace || 0), BigInt(0));
           setBalance((Number(total) / 1_000_000).toFixed(6));
-        } catch (e) {
-          console.log("No UTXOs yet");
+        } catch {
           setBalance("0.000000");
         }
 
         setLoading(false);
       } catch (err) {
-        console.error("❌ Error:", err);
         setError(String(err));
         setLoading(false);
       }

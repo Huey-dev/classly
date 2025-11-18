@@ -2,14 +2,8 @@ import type { NextConfig } from "next";
 import type { Configuration } from "webpack";
 
 const nextConfig: NextConfig = {
-  // Next.js 15 replacement for serverComponentsExternalPackages
-  serverExternalPackages: [
-    "@lucid-evolution/lucid",
-    "@anastasia-labs/cardano-multiplatform-lib-nodejs",
-  ],
-
   webpack: (config: Configuration, { isServer }) => {
-    // --- Enable async WASM + top-level await + layers ---
+    // Ensure experiments are enabled
     config.experiments = {
       ...(config.experiments || {}),
       asyncWebAssembly: true,
@@ -17,16 +11,14 @@ const nextConfig: NextConfig = {
       layers: true,
     };
 
-    // --- Add WASM loader ---
-    if (config.module?.rules) {
-      config.module.rules.push({
-        test: /\.wasm$/i,
-        type: "webassembly/async", // only loads in the browser
-      });
-    }
+    // Add WASM loader
+    config.module?.rules?.push({
+      test: /\.wasm$/i,
+      type: "webassembly/async",
+    });
 
+    // Client-side Node module fallbacks
     if (!isServer) {
-      // --- Client-side Node module fallbacks ---
       config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...(config.resolve.fallback || {}),
@@ -37,7 +29,7 @@ const nextConfig: NextConfig = {
         stream: false,
       };
     } else {
-      // --- Exclude WASM/Lucid from server build ---
+      // Exclude Lucid WASM from server
       config.externals = [
         ...(Array.isArray(config.externals) ? config.externals : []),
         /@lucid-evolution\/uplc/,
@@ -46,6 +38,9 @@ const nextConfig: NextConfig = {
 
     return config;
   },
+
+  // Externalize Lucid to prevent server parsing WASM
+  serverExternalPackages: ["@lucid-evolution/lucid"],
 };
 
 export default nextConfig;
