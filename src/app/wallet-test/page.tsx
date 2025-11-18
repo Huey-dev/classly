@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-
+import { Lucid, Blockfrost, generateSeedPhrase } from '@lucid-evolution/lucid';
 
 export default function WalletTest() {
   const [seedPhrase, setSeedPhrase] = useState<string>('');
@@ -14,11 +14,6 @@ export default function WalletTest() {
 
   useEffect(() => {
     (async () => {
-      const {
-        Lucid,
-        Blockfrost,
-        generateSeedPhrase
-      } = await import('@lucid-evolution/lucid'); 
       try {
         // 1. Check if we already have a seed saved
         let seed = localStorage.getItem(STORAGE_KEY);
