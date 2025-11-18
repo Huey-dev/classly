@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
+    "@lucid-evolution/lucid": "^0.4.29",
     "@prisma/client": "^6.11.0",
     "bcryptjs": "^3.0.2",
     "jsonwebtoken": "^9.0.2",
