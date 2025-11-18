@@ -2,25 +2,31 @@ import type { NextConfig } from "next";
 import type { Configuration } from "webpack";
 
 const nextConfig: NextConfig = {
+  // Next.js 15 replacement for serverComponentsExternalPackages
+  serverExternalPackages: [
+    "@lucid-evolution/lucid",
+    "@anastasia-labs/cardano-multiplatform-lib-nodejs",
+  ],
+
   webpack: (config: Configuration, { isServer }) => {
-    // --- Ensure module.rules exists ---
-    if (!config.module) config.module = { rules: [] };
-    if (!config.module.rules) config.module.rules = [];
+    // --- Enable async WASM + top-level await + layers ---
+    config.experiments = {
+      ...(config.experiments || {}),
+      asyncWebAssembly: true,
+      topLevelAwait: true,
+      layers: true,
+    };
 
     // --- Add WASM loader ---
-    config.module.rules.push({
-      test: /\.wasm$/i,
-      type: "webassembly/async", // load in browser only
-    });
+    if (config.module?.rules) {
+      config.module.rules.push({
+        test: /\.wasm$/i,
+        type: "webassembly/async", // only loads in the browser
+      });
+    }
 
-    // --- Exclude WASM from server build ---
-    if (isServer) {
-      config.externals = [
-        ...(Array.isArray(config.externals) ? config.externals : []),
-        /@lucid-evolution\/uplc/,
-      ];
-    } else {
-      // Client-side fallback for Node core modules
+    if (!isServer) {
+      // --- Client-side Node module fallbacks ---
       config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...(config.resolve.fallback || {}),
@@ -30,15 +36,13 @@ const nextConfig: NextConfig = {
         crypto: false,
         stream: false,
       };
+    } else {
+      // --- Exclude WASM/Lucid from server build ---
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : []),
+        /@lucid-evolution\/uplc/,
+      ];
     }
-
-    // Enable async WASM + top-level await
-    config.experiments = {
-      ...(config.experiments || {}),
-      asyncWebAssembly: true,
-      topLevelAwait: true,
-      layers: true,
-    };
 
     return config;
   },
