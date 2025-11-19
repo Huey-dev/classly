@@ -15,9 +15,11 @@
     "@lucid-evolution/lucid": "^0.4.29",
     "@prisma/client": "^6.11.0",
     "bcryptjs": "^3.0.2",
+    "copy-webpack-plugin": "^13.0.1",
     "jsonwebtoken": "^9.0.2",
     "next": "15.1.6",
     "next-auth": "^5.0.0-beta.29",
+    "next-transpile-modules": "^10.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
