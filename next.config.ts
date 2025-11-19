@@ -11,11 +11,13 @@ const nextConfig: NextConfig = {
       layers: true, // Recommended for App Router features
     };
 
-    // 1.2. Add a rule to handle .wasm files as 'webassembly/async' modules
-    // This is the key fix for the "Module parse failed" error.
+    // 1.2. Add a rule to handle .wasm files
     config.module.rules.push({
       test: /\.wasm$/,
-      type: "webassembly/async",
+      // KEY FIX: Treat WASM as 'asset/resource' for the server build (isServer=true)
+      // and 'webassembly/async' for the client build (isServer=false).
+      // This prevents the server from trying to parse the Wasm file as a module.
+      type: isServer ? "asset/resource" : "webassembly/async",
     });
 
     // 1.3. Handle server-side dependencies (required for client-side Web3 libraries)
