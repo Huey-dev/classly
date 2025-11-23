@@ -1,5 +1,5 @@
 "use client"
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 
@@ -42,5 +42,5 @@ export default function CallbackPage() {
         handleCallback();
     }, [searchParams, router]);
 
-    return <div>Authenticating...</div>;
+    return <Suspense>Authenticating...</Suspense>;
 }
