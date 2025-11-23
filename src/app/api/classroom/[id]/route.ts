@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-// ADDED IMPORTS based on your suggested snippet for database access
 import { prisma } from "../../../../../lib/prisma";
 import { getUserFromRequest } from "../../../../../lib/auth/getUserFromRequest";
 
 
-// Define the expected structure of the URL parameters
-interface RouteParams {
-    params: {
-        id: string; // The dynamic segment '[id]' from the file path
-    };
-}
-
-// The handler function signature is correct: it takes the request and the destructured params object.
+// The dynamic route handler signature must use a specific type structure
+// { params: { [key: string]: string } } to satisfy the Next.js compiler.
+// We are inlining the type here to resolve the error "Type 'RouteParams' is not a valid type".
 export async function GET(
     request: NextRequest, 
-    { params }: RouteParams
+    { params }: { params: { id: string } } // FIX: Inlining the required type structure
 ) {
     // Extract the classroom ID from the destructured params object
     const classroomId = params.id;
