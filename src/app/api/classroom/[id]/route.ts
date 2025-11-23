@@ -3,18 +3,28 @@ import { prisma } from "../../../../../lib/prisma";
 import { getUserFromRequest } from "../../../../../lib/auth/getUserFromRequest";
 
 
-// The dynamic route handler signature must use a specific type structure
-// { params: { [key: string]: string } } to satisfy the Next.js compiler.
-// We are inlining the type here to resolve the error "Type 'RouteParams' is not a valid type".
+// FIX: We are adopting the structure where the params object itself is wrapped 
+// in a Promise type, which is required by very strict Next.js App Router static analysis.
+// This resolves the error: "Type { params: { id: string; }; } is not a valid type for the function's second argument."
 export async function GET(
     request: NextRequest, 
-    { params }: { params: { id: string } } // FIX: Inlining the required type structure
+    context: { params: Promise<{ id: string }> } // <-- Corrected type for strict environments
 ) {
-    // Extract the classroom ID from the destructured params object
-    const classroomId = params.id;
-
+    let classroomId: string;
+    
+    try {
+        // 1. Await the parameters object to resolve the Promise type
+        const resolvedParams = await context.params; 
+        classroomId = resolvedParams.id;
+    } catch (e) {
+        // Handle case where params resolution fails
+        return NextResponse.json({ 
+            error: 'Failed to resolve route parameters.' 
+        }, { status: 400 });
+    }
+    
+    // Now continue with the existing logic using the resolved classroomId
     if (!classroomId) {
-        // This is a robust check, although not strictly necessary for a dynamic route
         return NextResponse.json({ 
             error: 'Missing classroom ID in route parameters.' 
         }, { status: 400 });
