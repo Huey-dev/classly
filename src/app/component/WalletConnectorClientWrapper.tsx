@@ -2,7 +2,7 @@
 import dynamic from 'next/dynamic';
 
 const WalletConnector = dynamic(
-  () => import('@/app/component/WalletConnector'),
+  () => import('../component/WalletConnector'),
   { ssr: false, loading: () => <p>Connecting to Cardano Wallet...</p> }
 );
 

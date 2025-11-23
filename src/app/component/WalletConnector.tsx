@@ -1,6 +1,17 @@
-
+'use client';
 import { useState, useEffect } from 'react';
+import type { LucidEvolution, Lucid as LucidInstance } from '@lucid-evolution/lucid' 
 
+// Utility to copy text to clipboard without using navigator.clipboard
+// This is often required in sandbox environments where direct clipboard access is restricted
+function copyToClipboard(text: string) {
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+}
 
 export default function WalletConnector() {
   const [seedPhrase, setSeedPhrase] = useState<string>('');
@@ -8,11 +19,44 @@ export default function WalletConnector() {
   const [balance, setBalance] = useState<string>('0.000000');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+  const [message, setMessage] = useState<{ text: string, type: 'success' | 'warning' | 'error' } | null>(null);
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [lucidInstance, setLucidInstance] = useState<LucidEvolution | null>(null);
+
 
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
   const STORAGE_KEY = 'classly_dev_wallet_seed';
 
-   useEffect(() => {
+  // State management for custom alert/message
+  const displayMessage = (text: string, type: 'success' | 'warning' | 'error' = 'success') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  // 🚨 IMPORTANT: Replace window.confirm with a modal
+  function handleResetConfirmation() {
+    setShowResetModal(true);
+  }
+
+  // 🚨 IMPORTANT: Replace window.alert with a custom message
+  function handleCopySeed() {
+    copyToClipboard(seedPhrase);
+    displayMessage('Seed copied! Save it somewhere safe!', 'warning');
+  }
+  
+  function handleCopyAddress() {
+    copyToClipboard(address);
+    displayMessage('Address copied!', 'success');
+  }
+
+  function confirmReset() {
+    localStorage.removeItem(STORAGE_KEY);
+    setShowResetModal(false);
+    // Reload to regenerate new wallet
+    window.location.reload(); 
+  }
+
+  useEffect(() => {
     (async () => {
       try {
         // Dynamic import Lucid and related modules
@@ -32,6 +76,7 @@ export default function WalletConnector() {
 
         // Initialize Lucid
         const lucid = await Lucid(new Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", BF_KEY || ""), "Preprod");
+        setLucidInstance(lucid); // Save instance if needed for future tx
 
         // Select wallet from seed
         lucid.selectWallet.fromSeed(seed);
@@ -42,10 +87,12 @@ export default function WalletConnector() {
 
         // Get balance
         try {
+          // Note: using lucid.wallet().getLovelace() is simpler if available, but this works:
           const utxos = await lucid.wallet().getUtxos();
           const total = utxos.reduce((sum, u) => sum + BigInt(u.assets.lovelace || 0), BigInt(0));
           setBalance((Number(total) / 1_000_000).toFixed(6));
-        } catch {
+        } catch (e) {
+          console.error("Error fetching balance:", e);
           setBalance("0.000000");
         }
 
@@ -57,35 +104,64 @@ export default function WalletConnector() {
     })();
   }, [BF_KEY]);
 
-  // Function to reset wallet (generate new one)
-  function resetWallet() {
-    if (confirm("⚠️ This will generate a NEW wallet. You'll lose access to this one unless you saved the seed phrase. Continue?")) {
-      localStorage.removeItem(STORAGE_KEY);
-      window.location.reload();
-    }
-  }
-
   if (loading) {
     return (
-      <div style={{ padding: '50px' }}>
-        <h2>🔄 Loading wallet...</h2>
+      <div style={{ padding: '50px', backgroundColor: '#fff' }}>
+        <h2>🔄 Connecting to Cardano Testnet...</h2>
+        <p>This involves loading WebAssembly and Blockfrost data.</p>
       </div>
     );
   }
 
+  // Helper to determine message box style
+  const getMessageStyle = (type: 'success' | 'warning' | 'error') => {
+      switch (type) {
+          case 'success': return { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #34d399' };
+          case 'warning': return { backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d' };
+          case 'error': return { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #f87171' };
+      }
+  };
+
+
   if (error) {
     return (
-      <div style={{ padding: '50px', color: 'red' }}>
-        <h2>❌ Error</h2>
-        <pre>{error}</pre>
+      <div style={{ padding: '50px', backgroundColor: '#fff' }}>
+        <h2>❌ Wallet Error</h2>
+        <p>Could not initialize Cardano wallet. Check Blockfrost key.</p>
+        <pre style={{ whiteSpace: 'pre-wrap', color: 'red', marginTop: '10px', fontSize: '12px' }}>{error}</pre>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '50px', maxWidth: '800px', margin: '0 auto' }}>
-      <h1>🚀 Classly Development Wallet</h1>
-      
+    <div style={{ 
+        padding: '50px', 
+        maxWidth: '800px', 
+        margin: '0 auto', 
+        fontFamily: 'sans-serif',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+        borderRadius: '12px'
+    }}>
+      <h1 style={{ fontSize: '28px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb', paddingBottom: '10px' }}>
+        🚀 Classly Development Wallet
+      </h1>
+
+      {/* Custom Message Alert */}
+      {message && (
+        <div 
+            style={{ 
+                ...getMessageStyle(message.type), 
+                padding: '12px', 
+                borderRadius: '6px', 
+                marginBottom: '20px', 
+                fontWeight: 'bold' 
+            }}
+        >
+          {message.text}
+        </div>
+      )}
+
       <div style={{ 
         backgroundColor: '#fef3c7', 
         padding: '15px', 
@@ -95,92 +171,25 @@ export default function WalletConnector() {
       }}>
         <p><strong>⚠️ IMPORTANT:</strong></p>
         <p style={{ marginTop: '5px', fontSize: '14px' }}>
-          This wallet persists in your browser. Same address every time you refresh!
+          This wallet is for **Preprod Testnet**. The seed persists in your browser's local storage.
         </p>
       </div>
 
-      <div style={{ 
-        backgroundColor: '#f3f4f6', 
-        padding: '20px', 
-        borderRadius: '8px',
-        marginBottom: '20px',
-        wordBreak: 'break-all'
-      }}>
-        <p><strong>🌱 Seed Phrase:</strong></p>
-        <p style={{ 
-          fontFamily: 'monospace', 
-          fontSize: '13px',
-          color: '#dc2626',
-          padding: '10px',
-          backgroundColor: '#fee2e2',
-          borderRadius: '4px',
-          marginTop: '10px'
-        }}>
-          {seedPhrase}
-        </p>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(seedPhrase);
-            alert('✅ Seed copied! Save it somewhere safe!');
-          }}
-          style={{
-            marginTop: '10px',
-            padding: '8px 16px',
-            backgroundColor: '#dc2626',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
+      <SectionCard title="🌱 Seed Phrase" color="#f3f4f6">
+        <CodeBlock content={seedPhrase} color="#fee2e2" textColor="#dc2626" />
+        <Button onClick={handleCopySeed} color="#dc2626">
           📋 Copy Seed Phrase
-        </button>
-      </div>
+        </Button>
+      </SectionCard>
 
-      <div style={{ 
-        backgroundColor: '#f3f4f6', 
-        padding: '20px', 
-        borderRadius: '8px',
-        marginBottom: '20px'
-      }}>
-        <p><strong>🏠 Address:</strong></p>
-        <p style={{ 
-          fontFamily: 'monospace', 
-          fontSize: '13px',
-          wordBreak: 'break-all',
-          padding: '10px',
-          backgroundColor: '#e5e7eb',
-          borderRadius: '4px',
-          marginTop: '10px'
-        }}>
-          {address}
-        </p>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(address);
-            alert('✅ Address copied!');
-          }}
-          style={{
-            marginTop: '10px',
-            padding: '8px 16px',
-            backgroundColor: '#6366f1',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
+      <SectionCard title="🏠 Address" color="#f3f4f6">
+        <CodeBlock content={address} color="#e5e7eb" textColor="#374151" />
+        <Button onClick={handleCopyAddress} color="#6366f1">
           📋 Copy Address
-        </button>
-      </div>
+        </Button>
+      </SectionCard>
 
-      <div style={{ 
-        backgroundColor: '#f3f4f6', 
-        padding: '20px', 
-        borderRadius: '8px',
-        marginBottom: '20px'
-      }}>
-        <p><strong>💰 Balance:</strong> {balance} tADA</p>
+      <SectionCard title={`💰 Balance: ${balance} tADA`} color="#f3f4f6">
         {balance === "0.000000" && (
           <div style={{ marginTop: '15px' }}>
             <a 
@@ -194,51 +203,137 @@ export default function WalletConnector() {
                 color: 'white',
                 textDecoration: 'none',
                 borderRadius: '4px',
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                transition: 'background-color 0.2s'
               }}
             >
               🚰 Request Test ADA from Faucet
             </a>
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      <div style={{ 
-        backgroundColor: '#fee2e2', 
-        padding: '15px', 
-        borderRadius: '8px',
-        marginTop: '20px'
-      }}>
-        <p><strong>🗑️ Reset Wallet</strong></p>
-        <p style={{ fontSize: '14px', marginTop: '5px', marginBottom: '10px' }}>
-          Generate a completely new wallet (you'll lose access to this one)
+      <SectionCard title="🗑️ Reset Wallet" color="#fee2e2">
+        <p style={{ fontSize: '14px', marginBottom: '10px' }}>
+          Generate a completely new wallet (you'll lose access to this one permanently).
         </p>
-        <button
-          onClick={resetWallet}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#dc2626',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
+        <Button onClick={handleResetConfirmation} color="#dc2626">
           🔄 Generate New Wallet
-        </button>
-      </div>
+        </Button>
+      </SectionCard>
+
+      {/* Reset Confirmation Modal */}
+      {showResetModal && (
+        <Modal title="Confirm Wallet Reset" onClose={() => setShowResetModal(false)}>
+          <p>⚠️ **WARNING:** This action is irreversible. You will lose access to the current wallet and any funds in it unless you have saved the seed phrase.</p>
+          <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <Button onClick={() => setShowResetModal(false)} color="#6b7280">Cancel</Button>
+            <Button onClick={confirmReset} color="#dc2626">Yes, Reset Wallet</Button>
+          </div>
+        </Modal>
+      )}
 
       <div style={{ marginTop: '30px', padding: '15px', backgroundColor: '#dbeafe', borderRadius: '8px' }}>
-        <p><strong>📝 How This Works:</strong></p>
+        <p style={{ fontWeight: 'bold' }}>📝 How This Works:</p>
         <ol style={{ marginTop: '10px', paddingLeft: '20px', fontSize: '14px' }}>
-          <li>First load: Generates new 24-word seed phrase</li>
-          <li>Seed saved in browser localStorage</li>
-          <li>Every refresh: Uses SAME seed = SAME address</li>
-          <li>Send test ADA to this address</li>
-          <li>Balance persists across refreshes</li>
+          <li>First load: Dynamically imports Lucid and generates a new 24-word seed phrase.</li>
+          <li>Seed is saved in browser `localStorage`.</li>
+          <li>Every refresh: Uses the SAME seed = SAME Cardano address.</li>
+          <li>Sends test ADA to this address to work with the Preprod Testnet.</li>
         </ol>
       </div>
     </div>
   );
 }
+
+
+// --- Helper Components for clean JSX ---
+
+const SectionCard = ({ title, children, color }: { title: string, children: React.ReactNode, color: string }) => (
+    <div style={{ 
+      backgroundColor: color, 
+      padding: '20px', 
+      borderRadius: '8px',
+      marginBottom: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+    }}>
+      <h3 style={{ fontSize: '18px', marginBottom: '15px', fontWeight: '600' }}>{title}</h3>
+      {children}
+    </div>
+);
+
+const CodeBlock = ({ content, color, textColor }: { content: string, color: string, textColor: string }) => (
+    <p style={{ 
+        fontFamily: 'monospace', 
+        fontSize: '13px',
+        wordBreak: 'break-all',
+        color: textColor,
+        padding: '10px',
+        backgroundColor: color,
+        borderRadius: '4px',
+        marginTop: '10px',
+        marginBottom: '15px'
+    }}>
+        {content}
+    </p>
+);
+
+const Button = ({ onClick, children, color }: { onClick: () => void, children: React.ReactNode, color: string }) => (
+    <button
+        onClick={onClick}
+        style={{
+            marginTop: '10px',
+            padding: '10px 20px',
+            backgroundColor: color,
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            transition: 'background-color 0.2s',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}
+    >
+        {children}
+    </button>
+);
+
+const Modal = ({ title, children, onClose }: { title: string, children: React.ReactNode, onClose: () => void }) => (
+    <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000 // Ensure it's on top
+    }}>
+        <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '12px',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)'
+        }}>
+            <h3 style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '10px', marginBottom: '20px' }}>{title}</h3>
+            {children}
+            <button 
+                onClick={onClose} 
+                style={{ 
+                    position: 'absolute', 
+                    top: '10px', 
+                    right: '10px', 
+                    background: 'none', 
+                    border: 'none', 
+                    fontSize: '20px', 
+                    cursor: 'pointer' 
+                }}>
+                &times;
+            </button>
+        </div>
+    </div>
+);

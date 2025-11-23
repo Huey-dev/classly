@@ -22,8 +22,6 @@ const nextConfig: NextConfig = {
     if (!isServer) {
       config.resolve.fallback = {
         fs: false,
-        net: false,
-        tls: false,
       };
     }
 
@@ -47,10 +45,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-
-  // Standard Next.js settings
-  reactStrictMode: true,
-  swcMinify: true,
 };
 
 export default nextConfig;
