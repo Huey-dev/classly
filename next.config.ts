@@ -1,50 +1,32 @@
-import type { NextConfig } from 'next';
-
+import { NextConfig } from 'next';
 const nextConfig: NextConfig = {
-  // Webpack configuration to handle WebAssembly (.wasm) files
-  webpack: (config, { isServer }) => {
-    // Enable modern async WebAssembly support
-    config.experiments = {
-      ...config.experiments,
-      asyncWebAssembly: true,
-      layers: true,
-    };
+    // Add custom Webpack configuration
+    webpack: (config, { isServer }) => {
+        
+        // 1. Enable asynchronous WebAssembly modules
+        // This is crucial for correctly importing WASM files like those in Lucid/UPLC.
+        config.experiments = {
+            ...config.experiments,
+            asyncWebAssembly: true,
+            layers: true,
+        };
 
-    // Conditional rule for .wasm files:
-    // - For the client (isServer=false), treat it as a WebAssembly module.
-    // - For the server (isServer=true), treat it as a simple asset to prevent parsing errors.
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: isServer ? 'asset/resource' : 'webassembly/async',
-    });
+        // 2. Add a rule to handle .wasm files explicitly
+        // We tell Webpack to treat .wasm files as a resource (asset/resource)
+        // instead of trying to parse them as standard JavaScript modules.
+        config.module.rules.push({
+            test: /\.wasm$/,
+            type: "asset/resource",
+        });
 
-    // Fallbacks for Node.js modules used by Web3 libraries in the browser
-    if (!isServer) {
-      config.resolve.fallback = {
-        fs: false,
-      };
-    }
-
-    return config;
-  },
-
-  // Security Headers (your original configuration)
-  async headers() {
-    const securityHeaders = [
-      {
-        key: "Content-Security-Policy",
-        value:
-          "frame-ancestors https://*.eternl.io/ https://eternl.io/ ionic: capacitor: chrome-extension: http://localhost:*/ https://localhost:*/;",
-      },
-    ];
-
-    return [
-      {
-        source: "/:path*",
-        headers: securityHeaders,
-      },
-    ];
-  },
+        // For Node.js environments (server-side rendering), ensure the WASM file
+        // isn't bundled but instead resolved as an external dependency if needed.
+        if (isServer) {
+            config.output.webassemblyModuleFilename = "chunks/[id].wasm";
+        }
+        
+        return config;
+    },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
