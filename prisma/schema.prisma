@@ -85,19 +85,33 @@ model Classroom {
 model Content {
   id          String     @id @default(uuid())
   userId      String
-  classroomId String
+  classroomId String?
   title       String
   description String?
   type        ContentType   
-  url         String
+  url         String?
+  // Status tracking is vital for async uploads
+  status        ContentStatus @default(PROCESSING)
   createdAt   DateTime   @default(now())
-  classroom   Classroom  @relation(fields: [classroomId], references: [id])
+  updatedAt   DateTime   @updatedAt 
+  classroom   Classroom?  @relation(fields: [classroomId], references: [id])
   author      User       @relation(fields: [userId], references: [id])
   contentReviews ContentReview[] 
   likes           ContentLike[]  
   mediaMetadata   MediaMetadata?
-}
+  muxAssetId    String?    @unique
+  muxPlaybackId String?    @unique  // Make optional: might not be ready instantly
+  muxUploadId   String?    @unique
+  
 
+  @@index([classroomId])
+  @@index([userId])
+}
+enum ContentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
 enum ContentType {
   VIDEO
   AUDIO
