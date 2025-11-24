@@ -29,16 +29,6 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Upload created:', upload.id);
 
-    // Optional: Save upload record to database immediately
-    await prisma.content.create({
-      data: {
-        title: 'Processing...', // Will be updated by webhook
-        muxUploadId: upload.id,
-        status: 'PROCESSING',
-        userId: user.id,
-        type: 'VIDEO',
-      },
-    });
 
     // Return the upload URL to the client
     return NextResponse.json({

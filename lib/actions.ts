@@ -18,7 +18,7 @@ interface SaveDraftParams {
  */
 export async function saveVideoToLibrary(params: SaveDraftParams) {
   const user = await getUserFromRequest();
-  
+
   if (!user) {
     throw new Error("Unauthorized");
   }
@@ -29,32 +29,33 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
     // 1. Verify the upload exists in Mux
     const upload = await mux.video.uploads.retrieve(muxUploadId);
 
-    // CRITICAL SECURITY CHECK: Ensure this upload actually belongs to the user
-    // (You passed userId as passthrough in the route.ts, check it here)
-    if (upload.new_asset_settings?.passthrough !== user.id) {
-       throw new Error("Unauthorized: Upload does not belong to this user.");
+    const passthrough = upload.new_asset_settings?.passthrough;
+    const { userId: owner } = JSON.parse(passthrough || "{}");
+
+    if (owner !== user.id) {
+      throw new Error("Unauthorized: Upload does not belong to this user.");
     }
 
     // 2. We do NOT wait for the asset to be fully ready here to avoid timeouts.
     // We store the upload_id and will let a Webhook or the UI polling update the status later.
     // However, if Mux was fast, we might have an asset_id already.
-    
+
     let muxAssetId = upload.asset_id || null;
     let muxPlaybackId = null;
     let videoUrl = null;
 
     // If Mux was super fast, try to get the asset details
     if (muxAssetId) {
-        try {
-            const asset = await mux.video.assets.retrieve(muxAssetId);
-            muxPlaybackId = asset.playback_ids?.[0]?.id;
-            if (muxPlaybackId) {
-                videoUrl = `https://stream.mux.com/${muxPlaybackId}.m3u8`;
-            }
-        } catch (e) {
-            // Ignore asset retrieval error, we will just save the draft
-            console.log("Asset not fully ready yet, saving as processing.");
+      try {
+        const asset = await mux.video.assets.retrieve(muxAssetId);
+        muxPlaybackId = asset.playback_ids?.[0]?.id;
+        if (muxPlaybackId) {
+          videoUrl = `https://stream.mux.com/${muxPlaybackId}.m3u8`;
         }
+      } catch (e) {
+        // Ignore asset retrieval error, we will just save the draft
+        console.log("Asset not fully ready yet, saving as processing.");
+      }
     }
 
     // 3. Create the Content Record detached from Classroom
@@ -74,7 +75,6 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
     });
 
     return { success: true, video: newVideo };
-
   } catch (error) {
     console.error("Error saving to library:", error);
     throw new Error("Failed to save video to library.");
