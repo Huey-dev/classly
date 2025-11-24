@@ -1,70 +1,67 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getUserFromRequest } from "../../../../lib/auth/getUserFromRequest";
-import Mux from "@mux/mux-node";
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromRequest } from '../../../../lib/auth/getUserFromRequest';
+import Mux from '@mux/mux-node';
+import { prisma } from '../../../../lib/prisma';
 
-// Initialize Mux
-
-const mux = new Mux();
-
-/**
- * Generates a Mux Direct Upload URL.
- * Mux handles the file storage and processing.
- */
-async function generateMuxDirectUploadUrl(userId: string) {
-  try {
-    const upload = await mux.video.uploads.create({
-      new_asset_settings: {
-        passthrough: userId,
-        playback_policy: ["public"],
-      },
-
-      cors_origin: process.env.NEXT_PUBLIC_BASE_URL || "*",
-    });
-
-    return {
-      uploadUrl: upload.url,
-      uploadId: upload.id,
-    };
-  } catch (error) {
-    console.error("Mux API Error:", error);
-    throw new Error("Failed to create Mux Direct Upload.");
-  }
-}
+const mux = new Mux({
+  tokenId: process.env.MUX_TOKEN_ID,
+  tokenSecret: process.env.MUX_TOKEN_SECRET,
+});
 
 export async function POST(request: NextRequest) {
-  const user = await getUserFromRequest();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await request.json();
-  const { fileType } = body;
-
-  if (
-    !fileType ||
-    typeof fileType !== "string" ||
-    !fileType.startsWith("video/")
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Invalid or missing 'fileType' in request body. Must be a video type.",
-      },
-      { status: 400 }
-    );
-  }
-
   try {
-    const { uploadUrl, uploadId } = await generateMuxDirectUploadUrl(user.id);
+    // Verify user is authenticated
+    const user = await getUserFromRequest();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    return NextResponse.json({
-      uploadUrl,
-      uploadId,
+    console.log('📤 Creating Mux upload for user:', user.id);
+
+    // Create the Mux upload
+    const upload = await mux.video.uploads.create({
+      cors_origin: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+      new_asset_settings: {
+        playback_policy: ['public'],
+        passthrough: JSON.stringify({ userId: user.id }),
+      },
     });
-  } catch (error) {
-    console.error("Error generating Mux upload URL:", error);
+
+    console.log('✅ Upload created:', upload.id);
+
+    // Optional: Save upload record to database immediately
+    await prisma.content.create({
+      data: {
+        title: 'Processing...', // Will be updated by webhook
+        muxUploadId: upload.id,
+        status: 'PROCESSING',
+        userId: user.id,
+        type: 'VIDEO',
+      },
+    });
+
+    // Return the upload URL to the client
+    return NextResponse.json({
+      uploadUrl: upload.url,
+      uploadId: upload.id,
+    });
+
+  } catch (error: any) {
+    console.error('❌ Failed to create Mux upload:', error);
+
+    // Handle Mux free plan limit error
+    if (error.error?.messages?.[0]?.includes('Free plan is limited')) {
+      return NextResponse.json(
+        { 
+          error: 'Free plan limit reached. You have 10 videos. Please delete some from your Mux dashboard to upload more.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Generic error
     return NextResponse.json(
-      { error: "Failed to generate upload URL." },
+      { error: 'Failed to create upload. Please try again.' },
       { status: 500 }
     );
   }

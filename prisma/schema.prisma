@@ -91,11 +91,11 @@ model Content {
   type        ContentType   
   url         String?
   // Status tracking is vital for async uploads
-  status        ContentStatus @default(PROCESSING)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt 
-  classroom   Classroom?  @relation(fields: [classroomId], references: [id])
-  author      User       @relation(fields: [userId], references: [id])
+  status      ContentStatus @default(PROCESSING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt 
+  classroom   Classroom?    @relation(fields: [classroomId], references: [id])
+  author      User          @relation(fields: [userId], references: [id])
   contentReviews ContentReview[] 
   likes           ContentLike[]  
   mediaMetadata   MediaMetadata?

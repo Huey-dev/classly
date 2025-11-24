@@ -1,17 +1,23 @@
-'use client';
+import { getUserFromRequest } from '../../../lib/auth/getUserFromRequest';
+import { redirect } from 'next/navigation';
+import UploadClient from './UploadClient'
 
-import VideoUploadForm from '../component/VideoUploadForm';
+export default async function UploadPage() {
+  // Protect the route
+  const user = await getUserFromRequest();
+  if (!user) {
+    redirect('/login');
+  }
 
-export default function UploadPage() {
-  const handleSuccess = () => {
-    alert('Video upload complete!');
-    // Optionally refresh the page or update a user video list
-  };
-
+  // Just render the client component - it will fetch the upload URL when needed
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6">Upload Your Video</h1>
-      <VideoUploadForm onUploadSuccess={handleSuccess} />
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6">Upload Video</h1>
+      <UploadClient />
+      <p className="mt-4 text-sm text-gray-600">
+        After upload completes, your video will be processed. 
+        Check your <a href="/dashboard" className="text-blue-600 hover:underline">dashboard</a> to see your videos.
+      </p>
     </div>
   );
 }

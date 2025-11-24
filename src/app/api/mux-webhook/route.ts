@@ -1,78 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Mux from '@mux/mux-node';
 import get from 'lodash.get';
-
-// NOTE: You must install lodash: npm install lodash @types/lodash
-import WEBHOOK_TYPES from "../../../../lib/webhooks/mux/types"; 
+import WEBHOOK_TYPES from '../../../../lib/webhooks/mux/types';
 
 const webhookSecret = process.env.MUX_WEBHOOK_SECRET;
 const mux = new Mux();
 
-// Helper to get the raw request body from a NextRequest
+// Helper to get the raw request body for signature verification
 async function getRawBody(req: NextRequest): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req.body as any) {
-        chunks.push(chunk);
-    }
-    return Buffer.concat(chunks);
+  const chunks: Buffer[] = [];
+  for await (const chunk of req.body as any) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
-// Ensure this handler only accepts POST requests
 export async function POST(req: NextRequest) {
-    // 1. Get the raw body for signature verification
-    const rawBody = await getRawBody(req);
-    const rawBodyString = rawBody.toString('utf8');
-    
-    // 2. Verify Signature
-    try {
-        if (webhookSecret) {
-            // This is crucial: it throws an error if the signature is invalid
-            mux.webhooks.verifySignature(
-                rawBodyString, 
-                req.headers as unknown as Record<string, string>, 
-                webhookSecret
-            );
-        } else {
-            // Only for development, should be set in production
-            console.log('Skipping webhook signature verification because no secret is configured');
-        }
-    } catch (e) {
-        console.error('Webhook signature verification failed:', e);
-        // Respond with 401 if the request is not authenticated
-        return new NextResponse("Webhook signature verification failed.", { status: 401 });
-    }
+  // 1. Get raw body for signature verification
+  const rawBody = await getRawBody(req);
+  const rawBodyString = rawBody.toString('utf8');
 
-    // 3. Parse Body and Get Handler
-    const jsonBody = JSON.parse(rawBodyString);
-    const { data, type } = jsonBody;
-    
-    // Mux events are like 'video.asset.ready'. We use lodash.get to map this
-    // to our handler structure (e.g., WEBHOOK_TYPES['video.asset']['ready'])
-    const WEBHOOK_TYPE_HANDLER = get(WEBHOOK_TYPES, type); 
-
-    if (WEBHOOK_TYPE_HANDLER) {
-        try {
-            // Retrieve the passthrough data (user ID)
-            const passthrough = data.passthrough || data.new_asset_settings?.passthrough;
-            const metadata = JSON.parse(passthrough);
-
-            await WEBHOOK_TYPE_HANDLER({ data, metadata });
-            
-            // 4. Success: Respond 200 (Mux requires 200 to consider the webhook handled)
-            return new NextResponse(null, { status: 200 });
-
-        } catch (err) {
-            if (err instanceof Error) {
-                console.error(`Webhook Execution Error for type ${type}: ${err.message}`);
-                // Return 400/500 to tell Mux to retry the webhook
-                return new NextResponse(`Webhook Execution Error: ${err.message}`, { status: 500 });
-            }
-            console.error('Unknown Webhook Request error', err);
-            return new NextResponse("Unknown Webhook Error", { status: 500 });
-        }
+  // 2. Verify webhook signature (CRITICAL for security)
+  try {
+    if (webhookSecret) {
+      mux.webhooks.verifySignature(
+        rawBodyString,
+        req.headers as unknown as Record<string, string>,
+        webhookSecret
+      );
     } else {
-        // Ignore unhandled event types (e.g., video.asset.deleted)
-        console.log(`Ignoring unhandled webhook type: ${type}`);
-        return new NextResponse(null, { status: 200 });
+      console.warn('⚠️ Webhook signature verification skipped - no secret configured');
     }
+  } catch (e) {
+    console.error('❌ Webhook signature verification failed:', e);
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  // 3. Parse webhook body
+  const jsonBody = JSON.parse(rawBodyString);
+  const { data, type } = jsonBody;
+
+  console.log(`📥 Received Mux webhook: ${type}`);
+
+  // 4. Get the appropriate handler for this event type
+  const WEBHOOK_TYPE_HANDLER = get(WEBHOOK_TYPES, type);
+
+  if (WEBHOOK_TYPE_HANDLER) {
+    try {
+      // Extract user ID from passthrough data
+      const passthrough = data.passthrough || data.new_asset_settings?.passthrough;
+      
+      let metadata;
+      if (passthrough) {
+        try {
+          // Try to parse as JSON first (if you're passing JSON)
+          metadata = JSON.parse(passthrough);
+        } catch {
+          // If it's just a string (userId), wrap it in an object
+          metadata = { userId: passthrough };
+        }
+      } else {
+        console.error('❌ No passthrough data found in webhook');
+        return new NextResponse('Missing passthrough data', { status: 400 });
+      }
+
+      // Execute the handler
+      await WEBHOOK_TYPE_HANDLER({ data, metadata });
+
+      console.log(`✅ Successfully processed ${type} webhook`);
+      return new NextResponse(null, { status: 200 });
+
+    } catch (err) {
+      if (err instanceof Error) {
+        console.error(`❌ Webhook handler error for ${type}:`, err.message);
+        return new NextResponse(`Webhook Error: ${err.message}`, { status: 500 });
+      }
+      console.error('❌ Unknown webhook error:', err);
+      return new NextResponse('Unknown Error', { status: 500 });
+    }
+  } else {
+    // Not an error - just an event type we don't handle
+    console.log(`ℹ️ Ignoring unhandled webhook type: ${type}`);
+    return new NextResponse(null, { status: 200 });
+  }
 }
