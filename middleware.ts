@@ -17,7 +17,7 @@ export default auth(async (req) => {
     !isLoggedIn &&
     privateRoutes.some((route) => nextUrl.pathname.startsWith(route))
   ) {
-    return NextResponse.redirect(new URL("/onboarding", req.url));
+    return NextResponse.redirect(new URL("/signin", req.url));
   }
 });
 
@@ -29,5 +29,7 @@ export const config = {
     "/signup",
     "/onboarding",
     "/classroom/:path*",
+    "/upload",
+    "/profile/:path*",
   ],
 };

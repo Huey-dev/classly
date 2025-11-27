@@ -6,7 +6,7 @@ export default function Signout() {
   return (
     <button
       className="rounded shadow-md p-4 bg-white"
-      onClick={() => signOut({ callbackUrl: "/signin" })}
+      onClick={() => signOut({ callbackUrl: "/" })}
     >
       Sign out with google
     </button>

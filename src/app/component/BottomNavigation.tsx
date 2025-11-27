@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
+import { useState, useEffect } from "react";
 // IMPORT YOUR SVG ICONS
 const IconProfile = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,10 +62,12 @@ export default function BottomNavigation({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-
+  const [mounted, setMounted] = useState(false);
+// Only mark as mounted on the client
+  useEffect(() => setMounted(true), []);
   const nav = [
     
-    { href: "/explore", label: "Explore", icon: <IconStar/> },
+    { href: "/", label: "Explore", icon: <IconStar/> },
     {
       href: "/upload",
       label: "Upload",
@@ -94,7 +96,7 @@ export default function BottomNavigation({
       "
       >
         {nav.map(({ href, label, icon }) => {
-          const active = pathname === href;
+          const active = mounted && pathname === href;
 
           return (
             <Link
