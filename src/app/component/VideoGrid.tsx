@@ -47,7 +47,7 @@ export default async function VideoGrid() {
             <Link
               key={video.id}
               // The link correctly points to the dynamic watch route
-              href={`/watch/${video.id}`}
+              href={`/video/${video.id}`}
               className="group block"
             >
               <div className="w-full">

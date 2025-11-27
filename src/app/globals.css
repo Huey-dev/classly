@@ -19,3 +19,27 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Smooth background transitions */
+body {
+  transition: background-color 0.3s ease;
+}
+
+/* Dark mode background */
+.dark body {
+  background-color: #111827;
+}
+
+/* Light mode background */
+body {
+  background-color: #ffffff;
+}
