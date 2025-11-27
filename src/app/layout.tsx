@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "./providers/ThemeProvider";
-
+import BottomNavigation from "./component/BottomNavigation";
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
@@ -23,8 +23,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <SessionProvider>
+          <BottomNavigation>
           {" "}
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>{children}</ThemeProvider></BottomNavigation>
         </SessionProvider>
       </body>
     </html>
