@@ -1,56 +1,13 @@
 "use client";
 import { useState } from "react";
 import { useTheme } from "next-themes";
+import Link from "next/link";
+import { Header } from "./Header";
 import Image from "next/image";
 import ExploreTab from "./ExploreTab";
-// --- Icon Components ---
-const IconMenu = () => (
-  <svg
-    className="w-6 h-6"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 6h16M4 12h16M4 18h16"
-    />
-  </svg>
-);
-
-const IconSun = () => (
-  <svg
-    className="w-6 h-6"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-    />
-  </svg>
-);
-
-const IconMoon = () => (
-  <svg
-    className="w-6 h-6"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-    />
-  </svg>
-);
+import { IconMoon } from "../component/icons/IconMoon";
+import { IconSun } from "./icons/IconSun";
+import { IconMenu } from "./icons/IconMenu";
 
 // --- Sidebar Navigation Link Component ---
 function NavLink({
@@ -181,41 +138,10 @@ export default function ClientLayout({
     <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
       {/* Header - Fixed Navigation Bar */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
-          {/* Left Side: Logo and Menu */}
-          <div className="flex items-center gap-4">
-           
-
-            <a href="/" className="flex">
-              <h1 className="text-xl font-bold">classly</h1>
-             <Image src="/atom-02.svg" alt="atom-02.png" width={20} height={16} />  
-            </a>
-          </div>
-
-          {/* Right Side: Links and Theme Toggle */}
-          <div className="flex items-center gap-4">
-            <a
-              href="/explore"
-              className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition hidden sm:block"
-            >
-              Explore
-            </a>
-            <a
-              href="/dashboard"
-              className="font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition hidden sm:block"
-            >
-              My Videos
-            </a>
-           
-             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-              aria-label="Toggle sidebar"
-            >
-              <IconMenu />
-            </button>
-          </div>
-        </div>
+        <Header
+          openSidebar={() => setSidebarOpen(true)}
+          theme={theme || "light"}
+        />
       </header>
 
       {/* Main Layout: Sidebar and Content */}
@@ -228,9 +154,6 @@ export default function ClientLayout({
         >
           <nav className="p-4 space-y-2 pt-4">
             <NavLink href="/" icon="🏠" label="Home" active />
-            <NavLink href="/explore" icon="✨" label="Explore" />
-            <NavLink href="/profile" icon="👤" label="Profile" />
-            <NavLink href="/settings" icon="⚙️" label="Settings" />
 
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
@@ -252,14 +175,18 @@ export default function ClientLayout({
             >
               Sign out
             </a>
+            {/* profile */}
+            <hr className="my-4 border-gray-200 dark:border-gray-700" />
+            <NavLink href="/profile" icon="👤" label="Profile" />
+            <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             {/* Dark Mode Toggle */}
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+              className="p-2 flex gap-2 items-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
               aria-label="Toggle dark mode"
             >
-              {theme === "light" ? <IconMoon /> : <IconSun />}
+              Toogle mode{theme === "light" ? <IconMoon /> : <IconSun />}
             </button>
           </nav>
         </aside>
@@ -267,7 +194,7 @@ export default function ClientLayout({
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Recommended Videos Section (Horizontal Scroll) */}
-            <ExploreTab />
+          <ExploreTab />
           <section className="mb-8 border-b border-gray-200 dark:border-gray-700 pb-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
               Continue watching...
