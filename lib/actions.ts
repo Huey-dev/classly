@@ -3,7 +3,7 @@
 import { prisma } from "./prisma";
 import { getUserFromRequest } from "./auth/getUserFromRequest";
 import Mux from "@mux/mux-node";
-
+import { revalidatePath } from "next/cache"; 
 const mux = new Mux();
 
 interface SaveDraftParams {
@@ -65,15 +65,17 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
         title,
         description,
         type: "VIDEO",
-        status: muxPlaybackId ? "READY" : "PROCESSING", // New enum logic
+        status: muxPlaybackId ? "READY" : "PROCESSING", 
         muxUploadId: muxUploadId,
         muxAssetId: muxAssetId,
         muxPlaybackId: muxPlaybackId,
         url: videoUrl,
-        classroomId: null, // Explicitly null
+        classroomId: null,
       },
     });
-
+    revalidatePath("/");                
+    revalidatePath("/explore");          
+    revalidatePath(`/video/${newVideo.id}`); 
     return { success: true, video: newVideo };
   } catch (error) {
     console.error("Error saving to library:", error);

@@ -2,7 +2,7 @@ import { prisma } from '../../../lib/prisma';
 import Link from 'next/link';
 import Image from 'next/image';
 import MuxPlayer from '@mux/mux-player-react';
-export const revalidate = 0;
+
 // The VideoGrid component is an async Server Component.
 // It fetches the data it needs independently.
 export default async function VideoGrid() {
