@@ -15,12 +15,17 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+// get origin for CORS from browser request or env
+     const incomingOrigin = request.headers.get('origin');
+    //  fallback env
+    const envOrigin = process.env.NEXT_PUBLIC_BASE_URL
+    // final origin
+    const origin = incomingOrigin || envOrigin || 'http://localhost:3000';
 
-    console.log('📤 Creating Mux upload for user:', user.id);
-
+console.log('📤 Creating Mux upload for user:', user.id, 'origin:', origin);
     // Create the Mux upload
     const upload = await mux.video.uploads.create({
-      cors_origin: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+      cors_origin: origin,
       new_asset_settings: {
         playback_policy: ['public'],
         passthrough: JSON.stringify({ userId: user.id }),
