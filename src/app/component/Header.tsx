@@ -1,0 +1,38 @@
+"use client";
+
+import Link from "next/link";
+import Image from "next/image";
+import SearchBar from "./SearchBar";
+
+export const Header = ({
+  openSidebar,
+  theme,
+}: {
+  openSidebar: () => void;
+  theme: string;
+}) => (
+  <header className="flex  justify-between p-4 bg-white dark:bg-gray-900 shadow">
+    <Link href="/" className="flex items-center">
+      <Image
+        src="/app-logo.png"
+        alt="Classly"
+        width={70}
+        height={70}
+        className="bg-transparent p-0 m-0"
+      />
+      <span className="text-md font-bold text-black dark:text-white leading-none m-0 p-0">
+        lassly
+      </span>
+    </Link>
+    <SearchBar />
+
+    <div className="flex items-center space-x-4">
+      {/* notification, upload button */}
+      <Link
+        href="/upload"
+        className="px-12 py-2 bg-green-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+      ><span className="text-lg">+</span> <span>Upload</span></Link>
+      
+    </div>
+  </header>
+);
