@@ -12,12 +12,12 @@ function CallbackContent() {
             const error = searchParams.get('error');
 
             if (error) {
-                router.push('/login?error=' + error);
+                router.push('/signup?error=' + error);
                 return;
             }
 
             if (!code) {
-                router.push('/login');
+                router.push('/signup');
                 return;
             }
 

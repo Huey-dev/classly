@@ -6,7 +6,7 @@ export default async function UploadPage() {
   // Protect the route
   const user = await getUserFromRequest();
   if (!user) {
-    redirect('/login');
+    redirect('/signin');
   }
 
   // Just render the client component - it will fetch the upload URL when needed
