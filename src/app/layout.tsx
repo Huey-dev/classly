@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <SessionProvider>
+        <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
           <BottomNavigation>
           {" "}
           <ThemeProvider>{children}</ThemeProvider></BottomNavigation>
