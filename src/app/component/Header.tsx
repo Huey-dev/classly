@@ -11,26 +11,26 @@ export const Header = ({
   openSidebar: () => void;
   theme: string;
 }) => (
-  <header className="flex  justify-between p-4 bg-white dark:bg-gray-900 shadow">
-    <Link href="/" className="flex items-center">
+  <header className="flex justify-between p-4 bg-white dark:bg-gray-900 shadow">
+    <Link href="/" className="flex items-center gap-2 select-none">
       <Image
         src="/app-logo.png"
-        alt="Classly"
+        alt="Classly logo"
         width={70}
         height={70}
-        className="bg-transparent p-0 m-0"
+        className="h-10 w-auto md:h-12"
       />
-      <span className="text-md font-bold text-black dark:text-white leading-none m-0 p-0">
-        lassly
+      <span className=" text-md font-bold text-black dark:text-white leading-none">lassly
       </span>
     </Link>
-    <SearchBar />
+     <div className="hidden md:block"> <SearchBar />
+     </div>
 
     <div className="flex items-center space-x-4">
       {/* notification, upload button */}
       <Link
         href="/upload"
-        className="px-12 py-2 bg-green-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+        className="px-12 py-2 bg-green-600 text-white rounded-full hover:bg-blue-700 transition-colors hidden md:block"
       ><span className="text-lg">+</span> <span>Upload</span></Link>
       
     </div>
