@@ -12,6 +12,8 @@ export default function UploadClient() {
   // State for user input metadata
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [partNumber, setPartNumber] = useState<number | undefined>(undefined);
 
   // Upload/Processing State
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -94,6 +96,8 @@ export default function UploadClient() {
         title,
         description,
         muxUploadId: uploadId,
+        courseId: courseId?.trim() || undefined,
+        partNumber: partNumber ?? undefined,
       });
 
       if (result.success) {
@@ -229,6 +233,34 @@ export default function UploadClient() {
                 className="w-full min-h-[120px] px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 disabled={isFormDisabled}
               />
+            </div>
+
+            {/* Course association */}
+            <div className="space-y-2">
+              <label className="text-sm text-gray-700 font-medium">
+                Course (optional)
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  value={courseId}
+                  onChange={(e) => setCourseId(e.target.value)}
+                  placeholder="Course ID (e.g. makeup-101)"
+                  className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isFormDisabled}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={partNumber ?? ''}
+                  onChange={(e) => setPartNumber(e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="Part number"
+                  className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isFormDisabled}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Use these fields if this video is part of a course/series. Parts will be shown as a playlist on the watch page.
+              </p>
             </div>
           </div>
           

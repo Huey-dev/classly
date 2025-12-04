@@ -10,6 +10,8 @@ interface SaveDraftParams {
   title: string;
   description: string;
   muxUploadId: string;
+  courseId?: string;
+  partNumber?: number;
 }
 
 /**
@@ -23,7 +25,7 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
     throw new Error("Unauthorized");
   }
 
-  const { title, description, muxUploadId } = params;
+  const { title, description, muxUploadId, courseId, partNumber } = params;
 
   try {
     // 1. Verify the upload exists in Mux
@@ -71,6 +73,8 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
         muxPlaybackId: muxPlaybackId,
         url: videoUrl,
         classroomId: null,
+        courseId: courseId || null,
+        partNumber: partNumber ?? null,
       },
     });
     revalidatePath("/");                

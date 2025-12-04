@@ -3,35 +3,92 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
 }
+
+/* -----------------------------------
+   ENUMS
+------------------------------------ */
 
 enum Role {
   USER
-  TEACHER
+  TEACHER   // optional, but not required for platform logic
+  ADMIN
 }
+
+enum CourseVisibility {
+  DRAFT
+  PUBLISHED
+  UNLISTED
+  ARCHIVED
+}
+
+enum ContentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ContentType {
+  VIDEO
+  AUDIO
+  PDF
+}
+
+enum CertificateTargetType {
+  COURSE
+  CONTENT
+  USER
+  GENERIC
+}
+
+/* -----------------------------------
+   USER / AUTH
+------------------------------------ */
+
 model User {
-  id            String   @id @default(uuid())
-  name          String?
-  email         String   @unique
-  image         String?
-  password      String?
-  hasOnboarded  Boolean  @default(false)
-  emailVerified DateTime?
-  accounts      Account[]
-  sessions      Session[]
-  classrooms    Classroom[]
-  classroomLikes ClassroomLike[]
-  contentLikes ContentLike[]
-  contentReviews ContentReview[]
-  contents      Content[]
-  enrollments   Enrollment[]     
-  reviews       ClassroomReview[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  role          Role     @default(USER)
+  id              String      @id @default(uuid())
+  name            String?
+  email           String      @unique
+  image           String?
+  password        String?
+  hasOnboarded    Boolean     @default(false)
+  emailVerified   DateTime?
+  role            Role        @default(USER)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+
+  // content ownership
+  contents        Content[]
+
+  // course ownership
+  courses         Course[] @relation("AuthorCourses")
+
+  // enrollments
+  enrollments     Enrollment[]
+  classrooms    Classroom[]  @relation("UserClassrooms")
+  // social
+  followers       Follow[] @relation("following")
+  following       Follow[] @relation("follower")
+
+  // engagement
+  contentLikes    ContentLike[]
+  contentReviews  ContentReview[]
+
+  // certificate relations
+  issuedCertificates     CertificateNFT[] @relation("IssuedCertificates")
+  receivedCertificates   CertificateNFT[] @relation("ReceivedCertificates")
+
+  // peer ratings
+  givenUserRatings       UserRating[] @relation("UserGivenRatings")
+  receivedUserRatings    UserRating[] @relation("UserReceivedRatings")
+  taughtEscrows          Escrow[] @relation("EscrowTeacher")
+  studentEscrows         Escrow[] @relation("EscrowStudent")
 }
 
 model Account {
@@ -59,131 +116,257 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+/* -----------------------------------
+   COURSES
+------------------------------------ */
+
+model Course {
+  id              String             @id @default(uuid())
+  userId          String
+  title           String
+  description     String?
+  coverImage      String?
+  language        String?
+  slug            String             @unique
+
+  // metadata / pricing
+  priceAda        Decimal?
+  isPaid          Boolean            @default(false)
+  visibility      CourseVisibility   @default(DRAFT)
+
+  // analytics + cached values
+  totalDuration   Int?
+  totalParts      Int?
+  averageRating   Float?
+  ratingCount     Int?
+  enrollmentCount Int?               @default(0)
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  author          User               @relation("AuthorCourses", fields: [userId], references: [id], onDelete: Cascade)
+  contents        Content[]
+  enrollments     Enrollment[]
+  certificates    CertificateNFT[]
+  escrowLinks     Escrow[]           @relation("CourseEscrows")
+
+  @@index([userId])
+}
+
+/* -----------------------------------
+   CONTENT
+------------------------------------ */
+
+model Content {
+  id            String        @id @default(uuid())
+  userId        String
+  courseId      String?
+  classroomId   String?       // legacy support
+
+  title         String
+  description   String?
+  type          ContentType
+  url           String?
+
+  partNumber    Int?
+  accessLevel   String?
+  status        ContentStatus @default(PROCESSING)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  author        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course        Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  classroom     Classroom?    @relation(fields: [classroomId], references: [id])
+
+  contentReviews ContentReview[]
+  certificates  CertificateNFT[]  @relation("ContentCertificates")
+  likes          ContentLike[]
+  mediaMetadata  MediaMetadata?
+
+  muxAssetId     String?      @unique
+  muxPlaybackId  String?      @unique
+  muxUploadId    String?      @unique
+
+  @@index([courseId])
+  @@index([userId])
+  @@unique([courseId, partNumber], name: "course_part_unique")
+}
+
+/* -----------------------------------
+   LEGACY CLASSROOM (DO NOT DELETE)
+------------------------------------ */
 
 model Classroom {
   id          String     @id @default(uuid())
-  userId      String     
-  name        String
+  userId      String
+  name        String?
   description String?
   image       String?
-  slug        String     @unique     
+  slug        String?    @unique
+
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  author      User       @relation(fields: [userId], references: [id])
+
+  author      User @relation(fields: [userId], references: [id], name: "UserClassrooms")
+  
   contents    Content[]
-  likes       ClassroomLike[]
-  reviews     ClassroomReview[]
-  students    Enrollment[]   
-  @@unique([name, userId]) 
+  students    Enrollment[]
 }
 
-model Content {
-  id          String     @id @default(uuid())
-  userId      String
-  classroomId String?
-  title       String
-  description String?
-  type        ContentType   
-  url         String?
-  // Status tracking is vital for async uploads
-  status      ContentStatus @default(PROCESSING)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt 
-  classroom   Classroom?    @relation(fields: [classroomId], references: [id])
-  author      User          @relation(fields: [userId], references: [id])
-  contentReviews ContentReview[] 
-  likes           ContentLike[]  
-  mediaMetadata   MediaMetadata?
-  muxAssetId    String?    @unique
-  muxPlaybackId String?    @unique  // Make optional: might not be ready instantly
-  muxUploadId   String?    @unique
-  
+/* -----------------------------------
+   ENGAGEMENT
+------------------------------------ */
 
-  @@index([classroomId])
-  @@index([userId])
-}
-enum ContentStatus {
-  PROCESSING
-  READY
-  FAILED
-}
-enum ContentType {
-  VIDEO
-  AUDIO
-  PDF
-}
-
-model ClassroomReview {
-  id          String   @id @default(uuid())
-  userId      String
-  classroomId   String
-  rating      Int      
-  comment     String?
-  createdAt   DateTime @default(now())
-
-  user        User     @relation(fields: [userId], references: [id])
-  classroom   Classroom  @relation(fields: [classroomId], references: [id])
-  
-  @@unique([userId, classroomId]) 
-}
 model ContentReview {
   id          String   @id @default(uuid())
   userId      String
   contentId   String
-  rating      Int      
+  rating      Int
   comment     String?
   createdAt   DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id])
-  content     Content  @relation(fields: [contentId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, contentId]) 
+  @@unique([userId, contentId])
 }
 
-model MediaMetadata {
-  id        String   @id @default(uuid())
-  contentId String   @unique
-  duration  Int      
-  size      Int     
-  format    String   
-
-  content   Content  @relation(fields: [contentId], references: [id])
-}
-
-model ClassroomLike {
-  id        String   @id @default(uuid())
-  userId    String
-  classroomId String
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id])
-  classroom Classroom  @relation(fields: [classroomId], references: [id])
-
-  @@unique([userId, classroomId]) 
-}
 model ContentLike {
   id        String   @id @default(uuid())
   userId    String
   contentId String
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
-  content   Content  @relation(fields: [contentId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, contentId]) 
+  @@unique([userId, contentId])
 }
+
+model Follow {
+  id           String   @id @default(uuid())
+  followerId   String
+  followingId  String
+  createdAt    DateTime @default(now())
+
+  follower     User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following    User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+}
+
+/* -----------------------------------
+   PEER RATING (ANYONE CAN RATE ANYONE)
+------------------------------------ */
+
+model UserRating {
+  id         String   @id @default(uuid())
+  raterId    String
+  ratedId    String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  rater      User @relation("UserGivenRatings", fields: [raterId], references: [id], onDelete: Cascade)
+  rated      User @relation("UserReceivedRatings", fields: [ratedId], references: [id], onDelete: Cascade)
+
+  @@unique([raterId, ratedId])
+  @@index([ratedId])
+}
+
+/* -----------------------------------
+   CERTIFICATES (ANYONE → ANYONE)
+------------------------------------ */
+
+model CertificateNFT {
+  id            String   @id @default(uuid())
+  tokenId       String   @unique
+  metadataCid   String?
+  issuedAt      DateTime @default(now())
+
+  issuerId      String
+  recipientId   String
+
+  issuer        User @relation("IssuedCertificates", fields: [issuerId], references: [id], onDelete: Cascade)
+  recipient     User @relation("ReceivedCertificates", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  targetType    CertificateTargetType
+  courseId      String?
+  contentId     String?
+  label         String?
+  credibilityScore Float? @default(0)
+
+  course        Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  content       Content? @relation(fields: [contentId], references: [id], name: "ContentCertificates", onDelete: SetNull)
+
+  @@index([issuerId])
+  @@index([recipientId])
+  @@index([courseId])
+  @@index([contentId])
+}
+
+/* -----------------------------------
+   MEDIA METADATA
+------------------------------------ */
+
+model MediaMetadata {
+  id        String   @id @default(uuid())
+  contentId String   @unique
+  duration  Int
+  size      Int
+  format    String
+
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+}
+
+/* -----------------------------------
+   ENROLLMENTS
+------------------------------------ */
 
 model Enrollment {
-  id          String      @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
-  classroomId String
-  joinedAt    DateTime    @default(now())
-  student     User        @relation(fields: [userId], references: [id])
-  classroom   Classroom   @relation(fields: [classroomId], references: [id])
+  classroomId String?     // legacy
+  courseId    String?
+  joinedAt    DateTime @default(now())
+
+  student     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classroom   Classroom?  @relation(fields: [classroomId], references: [id])
+  course      Course?     @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([userId])
 }
 
+/* -----------------------------------
+   ESCROW (Cardano Payments)
+------------------------------------ */
+
+model Escrow {
+  id            String    @id @default(uuid())
+  courseId      String?
+  teacherId     String
+  studentId     String
+  adaAmount     Decimal
+  status        String
+  lockedAt      DateTime  @default(now())
+
+  course        Course? @relation("CourseEscrows", fields: [courseId], references: [id], onDelete: SetNull)
+
+  // FIXED RELATIONS (you MUST name them)
+  teacher       User    @relation("EscrowTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  student       User    @relation("EscrowStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([teacherId])
+  @@index([studentId])
+}
