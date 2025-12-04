@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from 'next/script';
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import BottomNavigation from "./component/BottomNavigation";
+import { LucidProvider } from './context/LucidContext';
+
+
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "classly",
-  description: "the online classroom",
+  title: "Classly - Decentralized Education Platform",
+  description: "Learn and teach with blockchain-powered escrow payments",
 };
 
 export default function RootLayout({
@@ -21,11 +25,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script id="buffer-polyfill" strategy="beforeInteractive">
+          {`
+            if (typeof window !== 'undefined') {
+              window.global = window;
+              window.process = { env: {} };
+            }
+          `}
+        </Script>
+      </head>
       <body className={inter.className}>
         <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
           <BottomNavigation>
           {" "}
-          <ThemeProvider>{children}</ThemeProvider></BottomNavigation>
+          <LucidProvider>
+          <ThemeProvider>{children}</ThemeProvider></LucidProvider></BottomNavigation>
         </SessionProvider>
       </body>
     </html>
