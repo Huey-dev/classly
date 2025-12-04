@@ -3,9 +3,9 @@ import React, { useState } from "react";
 import SigninForm from "./component/SigninForm";
 import { SignupFormData } from "../../../../type";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
-import SignIn from "@/app/component/signin";
+import Image from "next/image";
+import { signIn } from "next-auth/react";
 const Page = () => {
   // State to manage form submission status
   const [loading, setLoading] = useState<boolean>(false);
@@ -44,16 +44,15 @@ const Page = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center  bg-white justify-center  px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-md">
-        <div className="flex items-center">
-          <Image src="/logo.png" alt="logo" width="37" height="37" />
-          <span className="font-extrabold text-lg ">aula</span>
+    <div className="min-h-screen flex items-center bg-[#f6faff] dark:bg-gray-900 justify-center px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg">
+        <div className="flex items-center justify-center">
+          <Image src="/app-logo.png" alt="Classly logo" width={48} height={48} />
         </div>
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in
-          </h2>
+        <div className="text-center space-y-2">
+          <p className="text-sm text-gray-500">Login</p>
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back!</h2>
+          <p className="text-sm text-gray-500">Please login to continue</p>
         </div>
 
         <SigninForm
@@ -63,20 +62,26 @@ const Page = () => {
           success={success}
         />
 
-        <div className="text-center mt-4">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link
-              href="/signup"
-              className="font-medium text-blue-600 hover:text-blue-800"
-            >
-              Sign up
-            </Link>
-          </p>
+        <div className="text-center text-sm text-gray-600 dark:text-gray-300">
+          Forgot Password
         </div>
-        <div className="flex item-center justify-center">
-          {" "}
-          <SignIn />
+
+        <div className="text-center text-sm text-gray-500 dark:text-gray-300">Or continue with</div>
+        <div className="flex items-center justify-center">
+          <button
+            onClick={() => signIn("google", { callbackUrl: "/" })}
+            className="w-full sm:w-auto px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
+          >
+            <Image src="/google.svg" alt="Google" width={18} height={18} />
+            <span className="text-sm font-medium text-gray-700">Sign in with Google</span>
+          </button>
+        </div>
+
+        <div className="text-center mt-2 text-sm text-gray-600 dark:text-gray-300">
+          Don&apos;t have an account?{" "}
+          <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-800">
+            Create Account
+          </Link>
         </div>
       </div>
     </div>
