@@ -69,6 +69,12 @@ export default function ClientLayout({
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             <a
+              href="/student"
+              className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              Student 
+            </a>
+            <a
               href="/signup"
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >

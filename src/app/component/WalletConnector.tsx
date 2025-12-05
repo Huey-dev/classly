@@ -75,7 +75,7 @@ export default function WalletConnector() {
         setSeedPhrase(seed);
 
         // Initialize Lucid
-        const lucid = await Lucid(new Blockfrost("https://cardano-preprod.blockfrost.io/api/v0", BF_KEY || ""), "Preprod");
+        const lucid = await Lucid(new Blockfrost("https://cardano-preview.blockfrost.io/api/v0", BF_KEY || ""), "Preview");
         setLucidInstance(lucid); // Save instance if needed for future tx
 
         // Select wallet from seed
