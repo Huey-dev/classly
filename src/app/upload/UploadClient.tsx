@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import MuxUploader, { MuxUploaderDrop, MuxUploaderFileSelect } from '@mux/mux-uploader-react';
 import { useRouter } from 'next/navigation';
 import { saveVideoToLibrary } from '../../../lib/actions';
@@ -12,7 +12,14 @@ export default function UploadClient() {
   // State for user input metadata
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [mode, setMode] = useState<"video" | "course">("video");
   const [courseId, setCourseId] = useState('');
+  const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [creatingCourse, setCreatingCourse] = useState(false);
+  const [newCourseTitle, setNewCourseTitle] = useState("");
+  const [newCourseDescription, setNewCourseDescription] = useState("");
+  const [newCourseCover, setNewCourseCover] = useState("");
   const [partNumber, setPartNumber] = useState<number | undefined>(undefined);
 
   // Upload/Processing State
@@ -26,12 +33,34 @@ export default function UploadClient() {
 
   const router = useRouter();
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoadingCourses(true);
+      try {
+        const res = await fetch('/api/courses');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setCourses(data);
+      } finally {
+        if (active) setLoadingCourses(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // --- Mux API Interaction ---
   const getUploadUrl = async () => {
     if (!title.trim()) {
       setError('Please add a video title before uploading');
       setTitleWarning(true);
       throw new Error('Title required');
+    }
+    if (mode === "course" && !courseId.trim()) {
+      setError("Select or create a course before uploading");
+      throw new Error("Course required");
     }
 
     try {
@@ -89,6 +118,10 @@ export default function UploadClient() {
       if (!uploadId) setError('The video file has not been uploaded yet.');
       return;
     }
+    if (mode === "course" && !courseId.trim()) {
+      setError("Select or create a course before publishing.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -96,7 +129,7 @@ export default function UploadClient() {
         title,
         description,
         muxUploadId: uploadId,
-        courseId: courseId?.trim() || undefined,
+        courseId: mode === "course" ? courseId?.trim() || undefined : undefined,
         partNumber: partNumber ?? undefined,
       });
 
@@ -115,6 +148,39 @@ export default function UploadClient() {
     }
   };
 
+  const handleCreateCourse = async () => {
+    if (!newCourseTitle.trim()) {
+      setError("Course title is required");
+      return;
+    }
+    setCreatingCourse(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newCourseTitle, description: newCourseDescription, coverImage: newCourseCover }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to create course");
+      }
+      const created = await res.json();
+      setCourses((prev) => [created, ...prev]);
+      setCourseId(created.id);
+      setNewCourseTitle("");
+      setNewCourseDescription("");
+      setNewCourseCover("");
+      // Redirect to course page so user can see/manage course immediately
+      router.push(`/course/${created.id}`);
+    } catch (e) {
+      console.error("Failed to create course", e);
+      setError(e instanceof Error ? e.message : "Failed to create course");
+    } finally {
+      setCreatingCourse(false);
+    }
+  };
+
   // Clear title warning when user starts typing
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
@@ -126,8 +192,22 @@ export default function UploadClient() {
 
   // --- Render Function ---
   const isFormDisabled = isUploading || isSaving;
-  const canPublish = uploadComplete && title && !isSaving;
-  const isUploadDisabled = isFormDisabled || !title.trim();
+  const canPublish = uploadComplete && title && !isSaving && (mode === "video" || courseId.trim());
+  const isUploadDisabled = isFormDisabled || !title.trim() || (mode === "course" && !courseId.trim());
+
+  const requireTitleMessage = !title.trim() ? "Please provide a video title to start uploading." : null;
+  const handleGuardedUploadClick = (e: React.MouseEvent) => {
+    if (isUploadDisabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!title.trim()) {
+        setTitleWarning(true);
+        setError("Please provide a video title before uploading.");
+      } else if (mode === "course" && !courseId.trim()) {
+        setError("Select or create a course before uploading.");
+      }
+    }
+  };
 
   return (
     // Max width set higher for desktop/tablet, centered
@@ -166,6 +246,26 @@ export default function UploadClient() {
         {/* Added padding adjustments for mobile/tablet/desktop */}
         <div className="flex-1 px-4 sm:px-6 py-6 space-y-8 overflow-y-auto"> 
           
+          {/* Mode Tabs */}
+          <div className="flex items-center gap-3">
+            {[
+              { key: "video", label: "Standalone video" },
+              { key: "course", label: "Course lesson" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setMode(item.key as "video" | "course")}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold border transition ${
+                  mode === item.key
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "border-gray-200 text-gray-700 dark:text-gray-200 hover:border-blue-400"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           {/* Hidden MuxUploader - Core logic handler */}
           <MuxUploader
             id={UPLOADER_ID}
@@ -235,33 +335,87 @@ export default function UploadClient() {
               />
             </div>
 
-            {/* Course association */}
-            <div className="space-y-2">
-              <label className="text-sm text-gray-700 font-medium">
-                Course (optional)
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input
-                  value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
-                  placeholder="Course ID (e.g. makeup-101)"
-                  className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={isFormDisabled}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  value={partNumber ?? ''}
-                  onChange={(e) => setPartNumber(e.target.value ? Number(e.target.value) : undefined)}
-                  placeholder="Part number"
-                  className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={isFormDisabled}
-                />
+            {/* Course association (only when course mode) */}
+            {mode === "course" && (
+              <div className="space-y-2">
+                <label className="text-sm text-gray-700 font-medium">
+                  Course (required for lessons)
+                </label>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <select
+                      value={courseId}
+                      onChange={(e) => setCourseId(e.target.value)}
+                      className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isFormDisabled || loadingCourses}
+                    >
+                      <option value="">Select a course</option>
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      value={partNumber ?? ''}
+                      onChange={(e) => setPartNumber(e.target.value ? Number(e.target.value) : undefined)}
+                      placeholder="Part number"
+                      className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isFormDisabled}
+                    />
+                    <div className="flex items-center text-sm text-gray-500">
+                      {loadingCourses ? "Loading your courses..." : "Select a course or create a new one below."}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2 bg-gray-50">
+                  <div className="text-sm font-semibold text-gray-800">Create a new course</div>
+                  <input
+                    value={newCourseTitle}
+                    onChange={(e) => setNewCourseTitle(e.target.value)}
+                    placeholder="Course title"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={isFormDisabled || creatingCourse}
+                    />
+                    <textarea
+                      value={newCourseDescription}
+                      onChange={(e) => setNewCourseDescription(e.target.value)}
+                      placeholder="Short description (optional)"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    rows={2}
+                    disabled={isFormDisabled || creatingCourse}
+                  />
+                  <input
+                    value={newCourseCover}
+                    onChange={(e) => setNewCourseCover(e.target.value)}
+                    placeholder="Cover image URL (optional)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={isFormDisabled || creatingCourse}
+                  />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleCreateCourse}
+                        disabled={creatingCourse || isFormDisabled}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                          creatingCourse
+                            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                            : "bg-blue-600 text-white hover:bg-blue-700"
+                        }`}
+                      >
+                        {creatingCourse ? "Creating..." : "Create & attach"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500">
+                    Create a course here to turn this upload into the first lesson, or pick an existing course to add more lessons.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-gray-500">
-                Use these fields if this video is part of a course/series. Parts will be shown as a playlist on the watch page.
-              </p>
-            </div>
+            )}
           </div>
           
           {/* Video Upload Section */}
@@ -329,7 +483,7 @@ export default function UploadClient() {
                 overlay-text="Drop your video here to upload"
                 className={`relative border-2 border-dashed rounded-xl p-10 transition-all duration-200 ${
                   isUploadDisabled
-                    ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50'
+                    ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50 pointer-events-none'
                     : 'border-blue-400 bg-blue-50 hover:border-blue-500 hover:bg-blue-100'
                 }`}
               >
