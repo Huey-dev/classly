@@ -23,9 +23,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "name cannot be blank" }, { status: 400 });
     }
 
-    const existing = await prisma.classroom.findUnique({
+    const existing = await prisma.classroom.findFirst({
       where: {
-        name_userId: { name, userId: user.id },
+        name,
+        userId: user.id,
       },
     });
 

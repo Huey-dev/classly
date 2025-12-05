@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Heart, UserPlus, UserCheck } from "../component/icons/index";
+import Skeleton from './VideoGridSkeleton';
 
 // Type for video data
 interface Author {
@@ -42,14 +43,7 @@ export default function VideoGrid() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-300 text-lg font-medium">Loading videos...</p>
-        </div>
-      </div>
-    );
+    return <Skeleton />;
   }
 
   if (videos.length === 0) {
@@ -97,7 +91,6 @@ export default function VideoGrid() {
 function VideoCard({ video }: { video: Video }) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<string[]>([]);
 
   const thumbnail = video.muxPlaybackId
@@ -113,15 +106,20 @@ function VideoCard({ video }: { video: Video }) {
     setIsFollowing((prev) => !prev);
   };
 
-  const toggleComments = () => {
+  const toggleComments = async () => {
     setShowComments((prev) => !prev);
-  };
-
-  const addComment = () => {
-    const text = commentText.trim();
-    if (!text) return;
-    setComments((prev) => [text, ...prev]);
-    setCommentText('');
+    if (!showComments) {
+      try {
+        const res = await fetch(`/api/videos/${video.id}/comments`);
+        if (res.ok) {
+          const data = await res.json();
+          const texts = (data as any[]).map((c) => c.text as string).filter(Boolean);
+          setComments(texts);
+        }
+      } catch (e) {
+        console.error("Failed to load comments", e);
+      }
+    }
   };
 
   // Get author initials
@@ -239,29 +237,11 @@ function VideoCard({ video }: { video: Video }) {
         {/* Comments Dropdown */}
         {showComments && (
           <div className="pt-3 space-y-3 animate-in slide-in-from-top-2 duration-300">
-            {/* Add Comment Input */}
-            <div className="flex gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addComment()}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              />
-              <button
-                onClick={addComment}
-                disabled={!commentText.trim()}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-md"
-              >
-                Post
-              </button>
-            </div>
-
             {/* Comments List */}
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {comments.length === 0 ? (
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3 italic">
-                  No comments yet. Be the first to comment!
+                  No comments yet.
                 </p>
               ) : (
                 comments.map((comment, idx) => (
