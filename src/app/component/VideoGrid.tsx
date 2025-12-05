@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Heart, UserPlus, UserCheck } from "../component/icons/index";
 import Skeleton from './VideoGridSkeleton';
+import Link from 'next/link';
 
 // Type for video data
 interface Author {
@@ -162,27 +163,29 @@ function VideoCard({ video }: { video: Video }) {
         {/* Avatar & Follow Button Section */}
         <div className="flex gap-3 mb-2.5 items-start">
           {/* Author Avatar */}
-          {video.author.image ? (
-            <img
-              src={video.author.image}
-              alt={video.author.name || 'User'}
-              className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-blue-100 dark:ring-blue-900"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                const parent = e.currentTarget.parentElement;
-                if (parent) {
-                  const fallback = document.createElement('div');
-                  fallback.className = 'w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold ring-2 ring-blue-100 dark:ring-blue-900';
-                  fallback.textContent = authorInitials;
-                  parent.appendChild(fallback);
-                }
-              }}
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold ring-2 ring-blue-100 dark:ring-blue-900">
-              {authorInitials}
-            </div>
-          )}
+          <Link href={`/profile/${video.author.id}`} className="flex-shrink-0">
+            {video.author.image ? (
+              <img
+                src={video.author.image}
+                alt={video.author.name || 'User'}
+                className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-blue-100 dark:ring-blue-900"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold ring-2 ring-blue-100 dark:ring-blue-900';
+                    fallback.textContent = authorInitials;
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold ring-2 ring-blue-100 dark:ring-blue-900">
+                {authorInitials}
+              </div>
+            )}
+          </Link>
 
           {/* Title & Info */}
           <div className="flex-1 min-w-0">
@@ -191,9 +194,9 @@ function VideoCard({ video }: { video: Video }) {
                 {video.title}
               </h3>
             </a>
-            <p className="text-sm text-gray-700 dark:text-gray-300 font-medium truncate">
+            <Link href={`/profile/${video.author.id}`} className="text-sm text-gray-700 dark:text-gray-300 font-medium truncate hover:text-blue-600 dark:hover:text-blue-400">
               {video.author.name}
-            </p>
+            </Link>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               <span>{formatLikes(likeCount)} {likeCount === 1 ? 'like' : 'likes'}</span>
               <span>•</span>

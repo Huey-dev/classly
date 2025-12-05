@@ -94,7 +94,7 @@ export default function ClientLayout({
             </a>
             {/* profile */}
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
-            <NavLink href="/profile" icon="" label="Profile" />
+            <NavLink href="/me" icon="" label="Profile" />
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             {/* Dark Mode Toggle */}

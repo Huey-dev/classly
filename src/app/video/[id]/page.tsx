@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "../../../../lib/prisma";
 import WatchClient from "./watch-client";
+import { getUserFromRequest } from "../../../../lib/auth/getUserFromRequest";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -10,6 +11,7 @@ async function getVideo(id: string) {
     where: { id },
     include: {
       author: { select: { id: true, name: true, image: true } },
+      course: { select: { id: true, title: true, description: true, userId: true } },
       mediaMetadata: { select: { duration: true } },
       _count: { select: { likes: true } },
     },
@@ -48,11 +50,25 @@ export default async function WatchPage({ params }: Props) {
   const data = await getVideo(id);
   if (!data) return notFound();
   const { video, related, followers } = data;
+  const user = await getUserFromRequest();
+
+  let enrolled = false;
+  if (video.courseId && user) {
+    if (video.course?.userId === user.id) {
+      enrolled = true;
+    } else {
+      const enrollment = await prisma.enrollment.findFirst({
+        where: { courseId: video.courseId, userId: user.id },
+      });
+      enrolled = !!enrollment;
+    }
+  }
 
   return (
     <WatchClient
       video={serializeVideo(video, followers)}
       related={serializeRelated(related)}
+      enrolled={enrolled}
     />
   );
 }
@@ -71,6 +87,7 @@ function serializeVideo(video: any, followerCount: number) {
     courseId: video.courseId ?? null,
     partNumber: video.partNumber ?? null,
     followerCount,
+    courseTitle: video.course?.title ?? null,
   };
 }
 

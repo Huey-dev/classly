@@ -12,15 +12,15 @@ export const Header = ({
   theme: string;
 }) => (
   <header className="flex justify-between p-4 bg-white dark:bg-gray-900 shadow">
-    <Link href="/" className="flex items-center gap-2 select-none">
+    <Link href="/" className="flex items-center select-none">
       <Image
-        src="/app-logo.png"
+        src="/cropped-logo.png"
         alt="Classly logo"
         width={70}
         height={70}
         className="h-10 w-auto md:h-12"
       />
-      <span className=" text-md font-bold text-black dark:text-white leading-none">lassly
+      <span className="md:mx-[-21px] mx-[-19px]  text-md font-bold text-black dark:text-white leading-none">lassly
       </span>
     </Link>
      <div className="hidden md:block"> <SearchBar />
