@@ -8,9 +8,10 @@
 import { useState, useEffect } from 'react';
 import { EscrowPayment } from './EscrowPayment';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { LucidEvolution } from '@lucid-evolution/lucid';
 import { EnrollmentList } from '../component/EnrollmentList/EnrollmentList';
-import router from 'next/router';
+import { initLucid } from '../lib/lucid';
 
 // Utility to copy text to clipboard
 function copyToClipboard(text: string) {
@@ -76,6 +77,7 @@ export default function StudentDashboard() {
   const [showSeedModal, setShowSeedModal] = useState<boolean>(false);
   const [lucidInstance, setLucidInstance] = useState<LucidEvolution | null>(null);
   const [selectedClassroom, setSelectedClassroom] = useState<any>(null);
+  const router = useRouter();
 
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
   const STORAGE_KEY = 'classly_dev_wallet_seed';
@@ -111,22 +113,19 @@ export default function StudentDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        console.log('=== Wallet Initialization Debug ===');
-        console.log('BF_KEY exists:', !!BF_KEY);
-        console.log('BF_KEY length:', BF_KEY?.length);
-        console.log('BF_KEY starts with:', BF_KEY?.slice(0, 10));
-        
-        // Check if API key exists
+        // Ensure BF key
         if (!BF_KEY || BF_KEY.length === 0) {
-          throw new Error('Blockfrost API key is not configured. Please add NEXT_PUBLIC_BLOCKFROST_API_KEY to your .env.local file');
+          throw new Error('Blockfrost API key is not configured. Please add NEXT_PUBLIC_BLOCKFROST_API_KEY.');
         }
 
-        console.log('Loading Lucid Evolution...');
-        const { Lucid, Blockfrost, generateSeedPhrase } = await import('@lucid-evolution/lucid');
+        // Initialize Lucid via shared helper
+        const lucid = await initLucid();
+
+        // Generate/load seed
+        const { generateSeedPhrase } = await import('@lucid-evolution/lucid');
 
         let seed = localStorage.getItem(STORAGE_KEY);
         if (!seed) {
-          console.log('Generating new seed phrase...');
           seed = generateSeedPhrase();
           localStorage.setItem(STORAGE_KEY, seed);
           displayMessage('New wallet created! Please save your seed phrase.', 'warning');
@@ -134,60 +133,34 @@ export default function StudentDashboard() {
 
         setSeedPhrase(seed);
 
-        console.log('Initializing Lucid with Blockfrost...');
-        // Initialize Lucid with Blockfrost (Preview network)
-        const lucid = await Lucid(
-          new Blockfrost('https://cardano-preview.blockfrost.io/api/v0', BF_KEY),
-          'Preview'
-          
-        );
-        
-        console.log('Selecting wallet from seed...');
-        // Select wallet from seed
         lucid.selectWallet.fromSeed(seed);
-        
         setLucidInstance(lucid);
 
-        console.log('Getting wallet address...');
-        // Get wallet address
         const addr = await lucid.wallet().address();
-        console.log('Address:', addr);
         setAddress(addr);
 
-        console.log('Fetching UTXOs...');
-        // Fetch balance with better error handling
         try {
           const utxos = await lucid.wallet().getUtxos();
-          console.log('UTXOs received:', utxos?.length || 0);
           
           if (!utxos || utxos.length === 0) {
-            console.log('No UTXOs found - wallet is empty');
             setBalance(0);
           } else {
-            console.log('Processing UTXOs for balance...');
-            // Calculate total balance with extensive safety checks
             let total = BigInt(0);
             
             for (let i = 0; i < utxos.length; i++) {
               const utxo = utxos[i];
-              console.log(`UTXO ${i}:`, JSON.stringify(utxo, (key, value) =>
-                typeof value === 'bigint' ? value.toString() : value
-              ));
               
               if (!utxo) {
-                console.warn(`UTXO ${i} is null/undefined, skipping`);
                 continue;
               }
               
               if (!utxo.assets) {
-                console.warn(`UTXO ${i} has no assets property, skipping`);
                 continue;
               }
               
               const lovelaceValue = utxo.assets.lovelace;
               
               if (lovelaceValue === undefined || lovelaceValue === null) {
-                console.warn(`UTXO ${i} has no lovelace value, skipping`);
                 continue;
               }
               
@@ -206,17 +179,13 @@ export default function StudentDashboard() {
                   continue;
                 }
                 
-                console.log(`UTXO ${i} lovelace value: ${lovelaceBigInt.toString()}`);
                 total += lovelaceBigInt;
               } catch (conversionError) {
-                console.error(`Error converting UTXO ${i} lovelace to BigInt:`, conversionError, 'Value:', lovelaceValue);
                 continue;
               }
             }
             
-            console.log('Total lovelace:', total.toString());
             const adaBalance = Number(total) / 1_000_000;
-            console.log('ADA balance:', adaBalance);
             setBalance(adaBalance);
           }
         } catch (balanceError) {
@@ -225,13 +194,8 @@ export default function StudentDashboard() {
           setBalance(0);
         }
 
-        console.log('Wallet initialization complete!');
         setLoading(false);
       } catch (err: any) {
-        console.error('=== Initialization Error ===');
-        console.error('Error:', err);
-        console.error('Error message:', err?.message);
-        console.error('Error stack:', err?.stack);
         setError(err?.message || String(err));
         setLoading(false);
       }
@@ -508,7 +472,6 @@ export default function StudentDashboard() {
               ctaHref: '/courses'
             }}
             onEnrollmentClick={(enrollment) => {
-              // Handle click on an enrollment
               router.push(`/courses/${enrollment.courseId}`);
             }}
           />

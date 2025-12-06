@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getUserFromRequest } from '../../../lib/auth/getUserFromRequest';
 import { redirect } from 'next/navigation';
 import UploadClient from './UploadClient'

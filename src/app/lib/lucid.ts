@@ -12,6 +12,9 @@ export async function initLucid(): Promise<LucidEvolution> {
     if (!BLOCKFROST_API_KEY) {
       throw new Error('Blockfrost API key is not configured');
     }
+    if (!Lucid || !Blockfrost) {
+      throw new Error('Lucid or Blockfrost import failed');
+    }
 
     const lucid = await Lucid(
       new Blockfrost(BLOCKFROST_URL, BLOCKFROST_API_KEY),
