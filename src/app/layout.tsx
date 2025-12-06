@@ -16,6 +16,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Classly - Decentralized Education Platform",
   description: "Learn and teach with blockchain-powered escrow payments",
+  icons: {
+    icon: "/app-logo.png",
+    shortcut: "/app-logo.png",
+    apple: "/app-logo.png",
+  },
 };
 
 export default function RootLayout({

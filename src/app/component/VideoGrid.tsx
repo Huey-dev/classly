@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Heart, UserPlus, UserCheck } from "../component/icons/index";
+import { ChevronDown, ChevronUp, UserPlus, UserCheck } from "../component/icons/index";
 import Skeleton from './VideoGridSkeleton';
 import Link from 'next/link';
 
-// Type for video data
 interface Author {
   id: string;
   name: string;
@@ -17,6 +16,7 @@ interface Video {
   title: string;
   muxPlaybackId: string | null;
   createdAt: string;
+  course?: { id: string; title: string; averageRating?: number | null; priceAda?: number | null } | null;
   _count?: { likes: number };
   mediaMetadata?: { duration?: number | null };
   author: Author;
@@ -51,7 +51,7 @@ export default function VideoGrid() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
         <div className="text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 max-w-md">
-          <div className="text-6xl mb-4">🎬</div>
+          <div className="text-6xl mb-4">??</div>
           <p className="text-gray-600 dark:text-gray-300 mb-6 text-lg">No videos available yet.</p>
           <a
             href="/upload"
@@ -64,13 +64,11 @@ export default function VideoGrid() {
     );
   }
 
-  // Take only first 9 videos for 3x3 grid
   const displayVideos = videos.slice(0, 9);
 
   return (
     <div className="bg-white dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Fixed 3x3 Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
           {displayVideos.map((video) => (
             <VideoCard key={video.id} video={video} />
@@ -99,8 +97,7 @@ function VideoCard({ video }: { video: Video }) {
     : null;
   const durationSeconds = video.mediaMetadata?.duration ?? null;
   const durationLabel = formatDuration(durationSeconds);
-  
-  // Real-time like count from API data
+
   const likeCount = video._count?.likes ?? 0;
 
   const toggleFollow = () => {
@@ -123,17 +120,15 @@ function VideoCard({ video }: { video: Video }) {
     }
   };
 
-  // Get author initials
   const authorInitials = video.author.name
     ?.split(' ')
-    .map(n => n[0])
+    .map((n) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2) || 'U';
 
   return (
     <div className="group rounded-2xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col h-full border border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transform hover:-translate-y-1 max-w-[540px] w-full">
-      {/* Video Thumbnail */}
       <a href={`/video/${video.id}`} className="block relative aspect-[16/8.5] overflow-hidden bg-black">
         {thumbnail ? (
           <img
@@ -147,22 +142,17 @@ function VideoCard({ video }: { video: Video }) {
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-6xl opacity-20">🎬</div>
+            <div className="text-6xl opacity-20">??</div>
           </div>
         )}
-        {/* Duration Badge */}
         <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-lg bg-black/90 backdrop-blur-sm text-white text-xs font-bold shadow-lg">
           {durationLabel}
         </div>
-        {/* Hover Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       </a>
 
-      {/* Content */}
       <div className="p-3 flex-1 flex flex-col">
-        {/* Avatar & Follow Button Section */}
         <div className="flex gap-3 mb-2.5 items-start">
-          {/* Author Avatar */}
           <Link href={`/profile/${video.author.id}`} className="flex-shrink-0">
             {video.author.image ? (
               <img
@@ -187,7 +177,6 @@ function VideoCard({ video }: { video: Video }) {
             )}
           </Link>
 
-          {/* Title & Info */}
           <div className="flex-1 min-w-0">
             <a href={`/video/${video.id}`} className="block">
               <h3 className="font-bold text-base text-gray-900 dark:text-white line-clamp-2 leading-tight mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -197,14 +186,30 @@ function VideoCard({ video }: { video: Video }) {
             <Link href={`/profile/${video.author.id}`} className="text-sm text-gray-700 dark:text-gray-300 font-medium truncate hover:text-blue-600 dark:hover:text-blue-400">
               {video.author.name}
             </Link>
+            {video.course?.id && (
+              <Link
+                href={`/course/${video.course.id}`}
+                className="inline-flex items-center gap-2 mt-1 px-2 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+              >
+                <span className="truncate">Course: {video.course.title}</span>
+                {typeof video.course.averageRating === "number" && (
+                  <>
+                    <span className="mx-1 text-blue-200 dark:text-blue-300" aria-hidden="true">|</span>
+                    <span className="flex items-center gap-0.5">
+                      <span aria-hidden="true">*</span>
+                      {video.course.averageRating.toFixed(1)}
+                    </span>
+                  </>
+                )}
+              </Link>
+            )}
             <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               <span>{formatLikes(likeCount)} {likeCount === 1 ? 'like' : 'likes'}</span>
-              <span>•</span>
+              <span className="mx-1 text-gray-400" aria-hidden="true">|</span>
               <span>{formatTimeSince(video.createdAt)}</span>
             </div>
           </div>
 
-          {/* Follow Button */}
           <button
             onClick={toggleFollow}
             className={`h-9 px-3 rounded-full transition-all transform hover:scale-105 flex items-center gap-1.5 flex-shrink-0 ${
@@ -222,7 +227,6 @@ function VideoCard({ video }: { video: Video }) {
           </button>
         </div>
 
-        {/* Comments Dropdown Toggle */}
         <div className="mt-auto pt-3 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={toggleComments}
@@ -237,10 +241,8 @@ function VideoCard({ video }: { video: Video }) {
           </button>
         </div>
 
-        {/* Comments Dropdown */}
         {showComments && (
           <div className="pt-3 space-y-3 animate-in slide-in-from-top-2 duration-300">
-            {/* Comments List */}
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {comments.length === 0 ? (
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3 italic">
