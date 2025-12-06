@@ -10,6 +10,7 @@ type Video = {
   duration: number | null;
   partNumber: number | null;
   createdAt: string;
+  description?: string | null;
 };
 
 type Props = {
@@ -19,6 +20,9 @@ type Props = {
   coverImage?: string | null;
   priceAda: number | null;
   isPaid?: boolean;
+  averageRating?: number | null;
+  updatedAt?: string | null;
+  totalDurationSeconds?: number;
   author: { id: string; name: string | null; image: string | null };
   videos: Video[];
   enrolled: boolean;
@@ -34,6 +38,9 @@ export default function CourseClient({
   coverImage,
   priceAda,
   isPaid,
+  averageRating,
+  updatedAt,
+  totalDurationSeconds,
   author,
   videos,
   enrolled,
