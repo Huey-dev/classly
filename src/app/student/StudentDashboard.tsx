@@ -1,6 +1,7 @@
 // ========================================
-// FILE 2: ACTUAL STUDENT DASHBOARD COMPONENT
+// STUDENT DASHBOARD COMPONENT
 // Location: src/app/student/StudentDashboard.tsx
+// Uses LucidContext for wallet management
 // ========================================
 
 'use client';
@@ -9,18 +10,21 @@ import { useState, useEffect } from 'react';
 import { EscrowPayment } from './EscrowPayment';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { LucidEvolution } from '@lucid-evolution/lucid';
 import { EnrollmentList } from '../component/EnrollmentList/EnrollmentList';
-import { initLucid } from '../lib/lucid';
+import { useLucid } from '../context/LucidContext';
 
 // Utility to copy text to clipboard
 function copyToClipboard(text: string) {
-  const el = document.createElement('textarea');
-  el.value = text;
-  document.body.appendChild(el);
-  el.select();
-  document.execCommand('copy');
-  document.body.removeChild(el);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text);
+  } else {
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+  }
 }
 
 // Mock classroom data
@@ -28,7 +32,7 @@ const MOCK_CLASSROOMS = [
   {
     id: 'math_101',
     name: 'Advanced Mathematics 101',
-    teacherAddress:'addr_test1qpt3f4vez5n62gasjjdp4pcvhycawz2wqkl7pmaw4cm92gfpl62xydflec2wn6sj5lzrq6fr5rfj0v8qj902klgewvhsk3vdrs',
+    teacherAddress: 'addr_test1qpt3f4vez5n62gasjjdp4pcvhycawz2wqkl7pmaw4cm92gfpl62xydflec2wn6sj5lzrq6fr5rfj0v8qj902klgewvhsk3vdrs',
     teacherName: 'Prof. Smith',
     price: 50,
     duration: '8 weeks',
@@ -67,20 +71,32 @@ const MOCK_CLASSROOMS = [
 ];
 
 export default function StudentDashboard() {
-  const [seedPhrase, setSeedPhrase] = useState<string>('');
-  const [address, setAddress] = useState<string>('');
-  const [balance, setBalance] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>('');
+  const {
+    lucid,
+    address,
+    balance,
+    seedPhrase,
+    loading,
+    error,
+    connectWithSeed,
+    resetWallet,
+    refreshBalance,
+  } = useLucid();
+
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'warning' | 'error' } | null>(null);
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [showSeedModal, setShowSeedModal] = useState<boolean>(false);
-  const [lucidInstance, setLucidInstance] = useState<LucidEvolution | null>(null);
   const [selectedClassroom, setSelectedClassroom] = useState<any>(null);
   const router = useRouter();
 
-  const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-  const STORAGE_KEY = 'classly_dev_wallet_seed';
+  // Auto-connect with seed on mount if not already connected
+  useEffect(() => {
+    if (lucid && !address && !loading) {
+      connectWithSeed().catch((err) => {
+        console.error('Auto-connect failed:', err);
+      });
+    }
+  }, [lucid, address, loading, connectWithSeed]);
 
   const displayMessage = (text: string, type: 'success' | 'warning' | 'error' = 'success') => {
     setMessage({ text, type });
@@ -88,146 +104,44 @@ export default function StudentDashboard() {
   };
 
   const handleCopySeed = () => {
-    copyToClipboard(seedPhrase);
-    displayMessage('Seed phrase copied! Save it somewhere safe!', 'warning');
+    if (seedPhrase) {
+      copyToClipboard(seedPhrase);
+      displayMessage('Seed phrase copied! Save it somewhere safe!', 'warning');
+    }
   };
 
   const handleCopyAddress = () => {
-    copyToClipboard(address);
-    displayMessage('Address copied to clipboard!', 'success');
+    if (address) {
+      copyToClipboard(address);
+      displayMessage('Address copied to clipboard!', 'success');
+    }
   };
 
   const confirmReset = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    resetWallet();
     setShowResetModal(false);
-    window.location.reload();
+    displayMessage('Wallet reset! A new wallet has been created.', 'warning');
   };
 
   const requestTestADA = () => {
-    window.open(
-      `https://docs.cardano.org/cardano-testnets/tools/faucet/?address=${address}`,
-      '_blank'
-    );
+    if (address) {
+      window.open(
+        `https://docs.cardano.org/cardano-testnets/tools/faucet/?address=${address}`,
+        '_blank'
+      );
+    }
   };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        // Ensure BF key
-        if (!BF_KEY || BF_KEY.length === 0) {
-          throw new Error('Blockfrost API key is not configured. Please add NEXT_PUBLIC_BLOCKFROST_API_KEY.');
-        }
-
-        // Initialize Lucid via shared helper
-        const lucid = await initLucid();
-
-        // Generate/load seed
-        const { generateSeedPhrase } = await import('@lucid-evolution/lucid');
-
-        let seed = localStorage.getItem(STORAGE_KEY);
-        if (!seed) {
-          seed = generateSeedPhrase();
-          localStorage.setItem(STORAGE_KEY, seed);
-          displayMessage('New wallet created! Please save your seed phrase.', 'warning');
-        }
-
-        setSeedPhrase(seed);
-
-        lucid.selectWallet.fromSeed(seed);
-        setLucidInstance(lucid);
-
-        const addr = await lucid.wallet().address();
-        setAddress(addr);
-
-        try {
-          const utxos = await lucid.wallet().getUtxos();
-          
-          if (!utxos || utxos.length === 0) {
-            setBalance(0);
-          } else {
-            let total = BigInt(0);
-            
-            for (let i = 0; i < utxos.length; i++) {
-              const utxo = utxos[i];
-              
-              if (!utxo) {
-                continue;
-              }
-              
-              if (!utxo.assets) {
-                continue;
-              }
-              
-              const lovelaceValue = utxo.assets.lovelace;
-              
-              if (lovelaceValue === undefined || lovelaceValue === null) {
-                continue;
-              }
-              
-              try {
-                // Handle both string and bigint types
-                let lovelaceBigInt: bigint;
-                
-                if (typeof lovelaceValue === 'string') {
-                  lovelaceBigInt = BigInt(lovelaceValue);
-                } else if (typeof lovelaceValue === 'bigint') {
-                  lovelaceBigInt = lovelaceValue;
-                } else if (typeof lovelaceValue === 'number') {
-                  lovelaceBigInt = BigInt(lovelaceValue);
-                } else {
-                  console.warn(`UTXO ${i} lovelace has unexpected type:`, typeof lovelaceValue);
-                  continue;
-                }
-                
-                total += lovelaceBigInt;
-              } catch (conversionError) {
-                continue;
-              }
-            }
-            
-            const adaBalance = Number(total) / 1_000_000;
-            setBalance(adaBalance);
-          }
-        } catch (balanceError) {
-          console.error('Error fetching balance:', balanceError);
-          console.error('Balance error stack:', (balanceError as Error).stack);
-          setBalance(0);
-        }
-
-        setLoading(false);
-      } catch (err: any) {
-        setError(err?.message || String(err));
-        setLoading(false);
-      }
-    })();
-  }, [BF_KEY]);
 
   const handlePaymentComplete = (txHash: string) => {
     displayMessage(`Payment successful! Tx: ${txHash.slice(0, 10)}...`, 'success');
     setSelectedClassroom(null);
-    // Reload balance
-    setTimeout(async () => {
-      if (lucidInstance) {
-        try {
-          const utxos = await lucidInstance.wallet().getUtxos();
-          let total = BigInt(0);
-          for (const utxo of utxos) {
-            if (utxo.assets && utxo.assets.lovelace) {
-              const lovelaceValue = utxo.assets.lovelace;
-              const lovelaceBigInt = typeof lovelaceValue === 'string' 
-                ? BigInt(lovelaceValue) 
-                : BigInt(lovelaceValue);
-              total += lovelaceBigInt;
-            }
-          }
-          setBalance(Number(total) / 1_000_000);
-        } catch (e) {
-          console.error('Error reloading balance:', e);
-        }
-      }
+    // Reload balance after payment
+    setTimeout(() => {
+      refreshBalance();
     }, 2000);
   };
 
+  // Loading state
   if (loading) {
     return (
       <main className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
@@ -240,6 +154,7 @@ export default function StudentDashboard() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-red-600 to-orange-600 dark:bg-gray-900 p-8">
@@ -251,14 +166,14 @@ export default function StudentDashboard() {
               Could not initialize Cardano wallet. Please check your configuration.
             </p>
             <pre className="bg-red-50 p-4 rounded-lg text-red-700 text-sm overflow-auto whitespace-pre-wrap">{error}</pre>
-            
+
             <div className="mt-6 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
               <h3 className="font-bold text-yellow-800 mb-2">Troubleshooting:</h3>
               <ul className="text-sm text-yellow-700 space-y-1 list-disc list-inside">
                 <li>Make sure you have a Blockfrost API key</li>
                 <li>Add it to <code className="bg-yellow-100 px-1 rounded">.env.local</code> as <code className="bg-yellow-100 px-1 rounded">NEXT_PUBLIC_BLOCKFROST_API_KEY</code></li>
                 <li>Get a free key at <a href="https://blockfrost.io" target="_blank" className="underline">blockfrost.io</a></li>
-                <li>Make sure to select "Preview" network</li>
+                <li>Make sure to select &quot;Preview&quot; network</li>
                 <li>Restart your dev server after adding the key</li>
               </ul>
             </div>
@@ -280,13 +195,12 @@ export default function StudentDashboard() {
         {/* Message Alert */}
         {message && (
           <div
-            className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg font-bold ${
-              message.type === 'success'
+            className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg font-bold ${message.type === 'success'
                 ? 'bg-green-100 text-green-800 border-2 border-green-300'
                 : message.type === 'warning'
-                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
-                : 'bg-red-100 text-red-800 border-2 border-red-300'
-            }`}
+                  ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
+                  : 'bg-red-100 text-red-800 border-2 border-red-300'
+              }`}
           >
             {message.text}
           </div>
@@ -333,16 +247,13 @@ export default function StudentDashboard() {
                     Faucet
                   </button>
                 )}
-                {/* <Link href="/" className="text-gray-600 hover:text-gray-800 font-semibold py-2 px-4">
-                  ← Home
-                </Link> */}
               </div>
             </div>
           </div>
         </div>
 
         {/* Warning Banner */}
-        <div className="bg-yellow-50  border-2 border-yellow-300 rounded-xl p-4 mb-8">
+        <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-8">
           <p className="text-yellow-800">
             <strong>⚠️ Testnet Wallet:</strong> This is a Preview testnet wallet. Your seed phrase is
             stored in browser localStorage. Make sure to back it up!
@@ -392,11 +303,10 @@ export default function StudentDashboard() {
                     <button
                       onClick={() => setSelectedClassroom(classroom)}
                       disabled={balance < classroom.price}
-                      className={`w-full font-bold py-3 px-6 rounded-lg transition ${
-                        balance < classroom.price
+                      className={`w-full font-bold py-3 px-6 rounded-lg transition ${balance < classroom.price
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
+                        }`}
                     >
                       {balance < classroom.price ? 'Insufficient Balance' : 'Enroll Now →'}
                     </button>
@@ -409,12 +319,12 @@ export default function StudentDashboard() {
           {/* Payment/Wallet Section */}
           <div>
             {selectedClassroom ? (
-              <EscrowPayment 
-                classroom={selectedClassroom} 
-                lucid={lucidInstance}
-                studentAddress={address}
+              <EscrowPayment
+                classroom={selectedClassroom}
+                lucid={lucid}
+                studentAddress={address || ''}
                 currentBalance={balance}
-                onPaymentComplete={handlePaymentComplete} 
+                onPaymentComplete={handlePaymentComplete}
                 onCancel={() => setSelectedClassroom(null)}
               />
             ) : (
@@ -452,7 +362,6 @@ export default function StudentDashboard() {
         <div className="mt-8">
           <EnrollmentList
             enrollments={[
-              // This would come from your actual data
               {
                 id: 'enroll_1',
                 courseId: 'math_101',
@@ -461,15 +370,14 @@ export default function StudentDashboard() {
                 enrolledAt: new Date('2023-10-15'),
                 status: 'active',
                 progress: 45,
-                lastAccessed: new Date('2023-11-20')
+                lastAccessed: new Date('2023-11-20'),
               },
-              // Add more enrollments as needed
             ]}
             emptyState={{
               title: 'No enrollments yet',
               description: 'You have not enrolled in any courses yet.',
               ctaText: 'Browse Courses',
-              ctaHref: '/courses'
+              ctaHref: '/courses',
             }}
             onEnrollmentClick={(enrollment) => {
               router.push(`/courses/${enrollment.courseId}`);
