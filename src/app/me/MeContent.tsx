@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import CourseManager from "./CourseManager";
 
 type Dashboard = {
@@ -62,9 +63,10 @@ export default function MeContent({
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {courses.map((course) => (
-                  <div
+                  <Link
                     key={course.id}
-                    className="p-0 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm"
+                    href={`/course/${course.id}`}
+                    className="p-0 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:border-blue-400 dark:hover:border-blue-500 transition"
                   >
                     <div className="h-36 bg-gray-200 dark:bg-gray-700">
                       {course.coverImage ? (
@@ -80,14 +82,14 @@ export default function MeContent({
                       </p>
                       <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                         <span>{course.durationWeeks} wk</span>
-                        <span>•</span>
+                        <span aria-hidden="true">|</span>
                         <span>{course.videoCount} videos</span>
-                        <span>•</span>
-                        <span>⭐ {course.rating ?? "N/A"}</span>
+                        <span aria-hidden="true">|</span>
+                        <span>Rating {course.rating ?? "N/A"}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                        <span>👍 {course.likes}</span>
-                        <span>•</span>
+                        <span>Likes {course.likes}</span>
+                        <span aria-hidden="true">|</span>
                         <span>{course.enrollmentCount} enrolled</span>
                       </div>
                       <div className="flex items-center gap-2 pt-1">
@@ -107,7 +109,7 @@ export default function MeContent({
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
               <CourseManager />

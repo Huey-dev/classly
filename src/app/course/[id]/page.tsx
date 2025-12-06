@@ -18,6 +18,7 @@ async function getCourse(id: string) {
           muxPlaybackId: true,
           partNumber: true,
           createdAt: true,
+          description: true,
           mediaMetadata: { select: { duration: true } },
         },
         orderBy: [{ partNumber: "asc" }, { createdAt: "asc" }],
@@ -58,7 +59,10 @@ export default async function CoursePage({ params }: Props) {
       coverImage={course.coverImage}
       priceAda={course.priceAda ? Number(course.priceAda) : null}
       isPaid={course.isPaid}
+      averageRating={course.averageRating ?? null}
+      updatedAt={course.updatedAt?.toISOString?.() ?? new Date().toISOString()}
       author={course.author}
+      totalDurationSeconds={course.totalDuration ? Number(course.totalDuration) : undefined}
       videos={course.contents.map((c: any) => ({
         id: c.id,
         title: c.title,
@@ -66,6 +70,7 @@ export default async function CoursePage({ params }: Props) {
         duration: c.mediaMetadata?.duration ?? null,
         partNumber: c.partNumber,
         createdAt: c.createdAt.toISOString(),
+        description: c.description,
       }))}
       enrolled={enrolled}
       isOwner={isOwner}

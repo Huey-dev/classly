@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import { authConfig } from "./auth.config";
 import { NextResponse } from "next/server";
 
-const privateRoutes = ["/dashboard"];
+const privateRoutes = ["/dashboard", "/me", "/upload", "/course", "/profile/edit"];
 
 const { auth } = NextAuth(authConfig);
 export default auth(async (req) => {
@@ -31,5 +31,7 @@ export const config = {
     "/classroom/:path*",
     "/upload",
     "/profile/:path*",
+    "/course/:path*",
+    "/me",
   ],
 };

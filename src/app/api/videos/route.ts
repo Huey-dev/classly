@@ -18,6 +18,7 @@ export async function GET() {
       },
       include: {
         author: { select: { id: true, name: true, image: true } },
+        course: { select: { id: true, title: true, averageRating: true, priceAda: true } },
         _count: { select: { likes: true } },
         mediaMetadata: { select: { duration: true } },
       },

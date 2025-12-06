@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 const tabs = [
   {
-    key: "explore",
+    key: "/",
     label: "Explore",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -18,23 +18,8 @@ const tabs = [
     ),
   },
   {
-    key: "trending",
-    label: "Trending",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" fill="none">
-        <path
-          d="M3 17l6-6 4 4 8-8"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="20" cy="4" r="1" />
-      </svg>
-    ),
-  },
-  {
-    key: "my-videos",
-    label: "My Videos",
+    key: "/courses/[id]",
+    label: "My Courses",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" fill="none">
         <path
@@ -75,7 +60,7 @@ export default function ExploreTab() {
         return (
           <button
             key={tab.key}
-            onClick={() => router.push(`/explore/${tab.key}`)}
+            onClick={() => router.push(`${tab.key}`)}
             className={`flex items-center gap-2 px-4 py-2 rounded-full border 
               transition whitespace-nowrap
               ${

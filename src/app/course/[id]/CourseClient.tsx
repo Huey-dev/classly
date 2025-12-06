@@ -109,7 +109,7 @@ export default function CourseClient({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to delete course");
       }
-      window.location.href = "/me"; // simple redirect after delete
+      window.location.href = "/me";
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete course");
     } finally {
@@ -124,11 +124,7 @@ export default function CourseClient({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to remove video");
       }
-      // optimistic remove
-      const idx = videos.findIndex((v) => v.id === videoId);
-      if (idx !== -1) {
-        videos.splice(idx, 1);
-      }
+      setCourseVideos((prev) => prev.filter((v) => v.id !== videoId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove video");
     }
@@ -184,7 +180,7 @@ export default function CourseClient({
                     {priceAda !== null && priceAda > 0 ? (
                       <>
                         <span className="font-semibold text-green-600 dark:text-green-400">{priceAda} ADA</span>
-                        <span>•</span>
+                        <span className="text-gray-400" aria-hidden="true">|</span>
                         <span>Paid</span>
                       </>
                     ) : (
@@ -195,7 +191,7 @@ export default function CourseClient({
               )}
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <span>{count} learners</span>
-                <span>•</span>
+                <span className="text-gray-400" aria-hidden="true">|</span>
                 <span>{courseVideos.length} videos</span>
               </div>
               <Link href={`/profile/${author.id}`} className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
@@ -296,7 +292,7 @@ function CourseVideo({ video, locked, canManage, onRemove }: { video: Video; loc
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
           {video.partNumber ? <span>Part {video.partNumber}</span> : <span>Video</span>}
-          <span>•</span>
+          <span className="text-gray-400" aria-hidden="true">|</span>
           <span>{formatDuration(video.duration)}</span>
         </div>
         <Link
