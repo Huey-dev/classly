@@ -42,16 +42,27 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [seedPhrase, setSeedPhrase] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  // Initialize Lucid on mount - ONLY runs client-side
+  // CRITICAL: Wait for component to mount before doing anything
   useEffect(() => {
-    // Double-check we're client-side
-    if (typeof window === 'undefined') {
+    setMounted(true);
+  }, []);
+
+  // Initialize Lucid ONLY after component is mounted
+  useEffect(() => {
+    // TRIPLE CHECK: Must be client-side, must be mounted, and window must exist
+    if (!mounted || typeof window === 'undefined') {
       return;
     }
 
-    initializeLucid();
-  }, []);
+    // Add a small delay to ensure hydration is complete
+    const timer = setTimeout(() => {
+      initializeLucid();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [mounted]);
 
   async function initializeLucid() {
     try {
@@ -67,9 +78,21 @@ export function LucidProvider({ children }: { children: ReactNode }) {
 
       console.log('🔄 Initializing Lucid...');
 
-      // CRITICAL: Dynamic import with proper destructuring
-      const lucidModule = await import('@lucid-evolution/lucid');
+      // CRITICAL: Dynamic import with proper error handling
+      let lucidModule;
+      try {
+        lucidModule = await import('@lucid-evolution/lucid');
+      } catch (importError) {
+        console.error('Failed to import Lucid module:', importError);
+        throw new Error('Failed to load Cardano wallet library. Please refresh the page.');
+      }
+
       const { Lucid, Blockfrost, generateSeedPhrase } = lucidModule;
+
+      // Verify imports worked
+      if (!Lucid || !Blockfrost || !generateSeedPhrase) {
+        throw new Error('Cardano wallet library loaded incorrectly. Please refresh the page.');
+      }
 
       console.log('✅ Lucid module loaded');
 
@@ -222,6 +245,11 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     if (lucid) {
       connectWithSeed();
     }
+  }
+
+  // Don't render children until mounted (prevents hydration issues)
+  if (!mounted) {
+    return null;
   }
 
   return (
