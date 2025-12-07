@@ -5,7 +5,7 @@ import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import BottomNavigation from "./component/BottomNavigation";
-import dynamic from "next/dynamic";
+import ClientProviderWrapper from "./component/Lucid/ClientProviderWrapper";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,13 +23,7 @@ export const metadata: Metadata = {
 };
 // FIX: Dynamic import of LucidProvider to prevent SSR
 // This ensures Lucid (which uses WebAssembly) only loads in the browser
-const ClientProviderWrapper = dynamic(
-  () => import("./component/Lucid/ClientProviderWrapper"),
-  {
-    ssr: false, // Disable server-side rendering for this component
-    loading: () => null, // Optional: show nothing while loading
-  }
-);
+
 
 export default function RootLayout({
   children,
