@@ -1,5 +1,5 @@
 // src/app/lib/lucid.ts
-import { Blockfrost, Lucid, type LucidEvolution } from '@lucid-evolution/lucid';
+import type { LucidEvolution } from '@lucid-evolution/lucid';
 
 const BLOCKFROST_URL = `https://cardano-${process.env.NEXT_PUBLIC_NETWORK?.toLowerCase() || 'preview'}.blockfrost.io/api/v0`;
 const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || '';
@@ -12,7 +12,11 @@ export async function initLucid(): Promise<LucidEvolution> {
     if (!BLOCKFROST_API_KEY) {
       throw new Error('Blockfrost API key is not configured');
     }
-    if (!Lucid || !Blockfrost) {
+
+    const mod = await import('@lucid-evolution/lucid');
+    const Lucid = (mod as any).Lucid;
+    const Blockfrost = (mod as any).Blockfrost;
+    if (typeof Lucid !== 'function' || typeof Blockfrost !== 'function') {
       throw new Error('Lucid or Blockfrost import failed');
     }
 
