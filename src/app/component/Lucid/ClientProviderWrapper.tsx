@@ -1,17 +1,10 @@
-'use client';
-import { ReactNode } from 'react';
-import dynamic from 'next/dynamic';
+import { LucidProvider } from '../../context/LucidContext';
+import ClientDashboard from '../dashboard/ClientDashboard'
 
-// Move the dynamic import HERE (not in layout.tsx)
-const LucidProvider = dynamic(
-  () => import('../../context/LucidContext').then(mod => ({ default: mod.LucidProvider })),
-  { ssr: false }
-);
-
-interface ClientProviderWrapperProps {
-  children: ReactNode;
-}
-
-export default function ClientProviderWrapper({ children }: ClientProviderWrapperProps) {
-  return <LucidProvider>{children}</LucidProvider>;
+export default function StudentWithProvider() {
+  return (
+    <LucidProvider>
+      <ClientDashboard />
+    </LucidProvider>
+  );
 }

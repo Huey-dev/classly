@@ -9,8 +9,8 @@ import dynamic from 'next/dynamic';
 import ClientLayout from '../component/ClientLayout';
 
 // Dynamic import with SSR disabled - this prevents server-side rendering
-const StudentDashboard = dynamic(
-  () => import('./StudentDashboard'),
+const ClientDashboard = dynamic(
+  () => import('../component/dashboard/ClientDashboard'),
   { 
     ssr: false, // Critical: prevents server-side rendering
     loading: () => (
@@ -25,10 +25,10 @@ const StudentDashboard = dynamic(
   }
 );
 
-export default function StudentPage() {
+export default function ClientPage() {
   return (
     <ClientLayout>
-      <StudentDashboard />
+      <ClientDashboard />
     </ClientLayout>
   );
 }

@@ -1,17 +1,12 @@
-// ========================================
-// STUDENT DASHBOARD COMPONENT
-// Location: src/app/student/StudentDashboard.tsx
-// Uses LucidContext for wallet management
-// ========================================
 
 'use client';
 
 import { useState, useEffect } from 'react';
-import { EscrowPayment } from './EscrowPayment';
+import { EscrowPayment } from '../../student/EscrowPayment';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { EnrollmentList } from '../component/EnrollmentList/EnrollmentList';
-import { useLucid } from '../context/LucidContext';
+import { EnrollmentList } from '../EnrollmentList/EnrollmentList';
+import { useLucid } from '../../context/LucidContext';
 
 // Utility to copy text to clipboard
 function copyToClipboard(text: string) {
@@ -70,7 +65,7 @@ const MOCK_CLASSROOMS = [
   },
 ];
 
-export default function StudentDashboard() {
+export default function ClientDashboard() {
   const {
     lucid,
     address,

@@ -5,7 +5,7 @@ import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import BottomNavigation from "./component/BottomNavigation";
-import ClientProviderWrapper from "./component/Lucid/ClientProviderWrapper";
+
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,9 +46,9 @@ export default function RootLayout({
         <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
           <BottomNavigation>
             {" "}
-            <ClientProviderWrapper>
+         
               <ThemeProvider>{children}</ThemeProvider>
-            </ClientProviderWrapper>
+            
           </BottomNavigation>
         </SessionProvider>
       </body>
