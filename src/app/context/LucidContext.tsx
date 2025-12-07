@@ -43,11 +43,14 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize Lucid on mount
+  // Initialize Lucid on mount - ONLY runs client-side
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      initializeLucid();
+    // Double-check we're client-side
+    if (typeof window === 'undefined') {
+      return;
     }
+
+    initializeLucid();
   }, []);
 
   async function initializeLucid() {
@@ -56,20 +59,31 @@ export function LucidProvider({ children }: { children: ReactNode }) {
       setError(null);
 
       const blockfrostKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-      const network = (process.env.NEXT_PUBLIC_NETWORK as 'Preview' | 'Mainnet') || 'Preview';
+      const network = (process.env.NEXT_PUBLIC_NETWORK as 'Preview' | 'Preprod' | 'Mainnet') || 'Preview';
 
       if (!blockfrostKey) {
         throw new Error('Blockfrost API key is not configured. Add NEXT_PUBLIC_BLOCKFROST_API_KEY to your .env file.');
       }
 
-      // Dynamically import Lucid (client-side only)
-      const { Lucid, Blockfrost, generateSeedPhrase } = await import('@lucid-evolution/lucid');
+      console.log('🔄 Initializing Lucid...');
+
+      // CRITICAL: Dynamic import with proper destructuring
+      const lucidModule = await import('@lucid-evolution/lucid');
+      const { Lucid, Blockfrost, generateSeedPhrase } = lucidModule;
+
+      console.log('✅ Lucid module loaded');
+
+      // Determine the correct network URL
+      const networkUrl = network === 'Preview' 
+        ? 'https://cardano-preview.blockfrost.io/api/v0'
+        : network === 'Preprod'
+        ? 'https://cardano-preprod.blockfrost.io/api/v0'
+        : 'https://cardano-mainnet.blockfrost.io/api/v0';
+
+      console.log(`🌐 Connecting to ${network} network...`);
 
       const lucidInstance = await Lucid(
-        new Blockfrost(
-          `https://cardano-${network.toLowerCase()}.blockfrost.io/api/v0`,
-          blockfrostKey
-        ),
+        new Blockfrost(networkUrl, blockfrostKey),
         network
       );
 
@@ -79,6 +93,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
       // Check for existing seed phrase in localStorage
       const existingSeed = localStorage.getItem(STORAGE_KEY);
       if (existingSeed) {
+        console.log('♻️ Found existing wallet seed');
         // Auto-connect with existing seed
         lucidInstance.selectWallet.fromSeed(existingSeed);
         setSeedPhrase(existingSeed);
@@ -89,6 +104,8 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         // Fetch balance
         await fetchBalance(lucidInstance);
         console.log('✅ Wallet restored from seed');
+      } else {
+        console.log('🆕 No existing wallet found - will create on first connect');
       }
     } catch (err: any) {
       console.error('❌ Failed to initialize Lucid:', err);
@@ -136,6 +153,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     if (!lucid) throw new Error('Lucid not initialized');
 
     try {
+      // Re-import to get generateSeedPhrase
       const { generateSeedPhrase } = await import('@lucid-evolution/lucid');
 
       let seed = providedSeed || localStorage.getItem(STORAGE_KEY);
