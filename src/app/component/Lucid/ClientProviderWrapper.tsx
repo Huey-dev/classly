@@ -1,5 +1,5 @@
 'use client';
-import { LucidProvider } from '../../src/app/context/LucidContext'
+import { LucidProvider } from '../../context/LucidContext'
 import { ReactNode } from 'react';
 interface ClientProviderWrapperProps {
   children: ReactNode;

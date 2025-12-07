@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 // FIX: Dynamic import of LucidProvider to prevent SSR
 // This ensures Lucid (which uses WebAssembly) only loads in the browser
 const ClientProviderWrapper = dynamic(
-  () => import("../../context/Lucid/ClientProviderWrapper"),
+  () => import("./component/Lucid/ClientProviderWrapper"),
   {
     ssr: false, // Disable server-side rendering for this component
     loading: () => null, // Optional: show nothing while loading
