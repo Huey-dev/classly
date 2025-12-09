@@ -24,10 +24,10 @@ export async function generateNewWallet(): Promise<WalletInfo> {
     // Initialize Lucid (Lucid is now a function, not Lucid.new)
     const lucid = await Lucid(
       new Blockfrost(
-        `https://cardano-preview.blockfrost.io/api/v0`,
+        `https://cardano-preprod.blockfrost.io/api/v0`,
         process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY!
       ),
-      'Preview'
+      'Preprod'
     );
 
     // Generate seed phrase (24 words)

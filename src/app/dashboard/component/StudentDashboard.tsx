@@ -1,29 +1,24 @@
-
 'use client';
 
-import { useState, useEffect } from 'react';
-import { EscrowPayment } from '../../student/EscrowPayment';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { EnrollmentList } from '../EnrollmentList/EnrollmentList';
+import router from 'next/router';
+import { EscrowPayment } from '../payment/EscrowPayment';
+import { EnrollmentList } from '../../component/EnrollmentList/EnrollmentList';
 import { useLucid } from '../../context/LucidContext';
 
 // Utility to copy text to clipboard
 function copyToClipboard(text: string) {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text);
-  } else {
-    const el = document.createElement('textarea');
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-  }
+  const el = document.createElement('textarea');
+  el.value = text;
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand('copy');
+  document.body.removeChild(el);
 }
 
-// Mock classroom data
-const MOCK_CLASSROOMS = [
+// Mock course data
+const MOCK_COURSES = [
   {
     id: 'math_101',
     name: 'Advanced Mathematics 101',
@@ -33,7 +28,7 @@ const MOCK_CLASSROOMS = [
     duration: '8 weeks',
     description: 'Learn advanced calculus and linear algebra',
     nftPolicyId: 'abc123...',
-    nftAssetName: 'CLASSROOM_MATH101',
+    nftAssetName: 'course_MATH101',
     rating: 4.8,
     students: 45,
   },
@@ -46,7 +41,7 @@ const MOCK_CLASSROOMS = [
     duration: '10 weeks',
     description: 'Introduction to quantum mechanics',
     nftPolicyId: 'def456...',
-    nftAssetName: 'CLASSROOM_PHYS201',
+    nftAssetName: 'course_PHYS201',
     rating: 4.9,
     students: 32,
   },
@@ -59,39 +54,30 @@ const MOCK_CLASSROOMS = [
     duration: '12 weeks',
     description: 'Build dApps on Cardano',
     nftPolicyId: 'ghi789...',
-    nftAssetName: 'CLASSROOM_CS301',
+    nftAssetName: 'course_CS301',
     rating: 5.0,
     students: 28,
   },
 ];
 
-export default function ClientDashboard() {
+export default function StudentDashboard() {
   const {
     lucid,
-    address,
+    walletAddress: address,
     balance,
     seedPhrase,
+    connectWallet,
+    disconnectWallet,
+    refreshBalance,
+    connecting,
     loading,
     error,
-    connectWithSeed,
-    resetWallet,
-    refreshBalance,
   } = useLucid();
 
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'warning' | 'error' } | null>(null);
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [showSeedModal, setShowSeedModal] = useState<boolean>(false);
-  const [selectedClassroom, setSelectedClassroom] = useState<any>(null);
-  const router = useRouter();
-
-  // Auto-connect with seed on mount if not already connected
-  useEffect(() => {
-    if (lucid && !address && !loading) {
-      connectWithSeed().catch((err) => {
-        console.error('Auto-connect failed:', err);
-      });
-    }
-  }, [lucid, address, loading, connectWithSeed]);
+  const [selectedCourse, setSelectedCourse] = useState<any>(null);
 
   const displayMessage = (text: string, type: 'success' | 'warning' | 'error' = 'success') => {
     setMessage({ text, type });
@@ -99,57 +85,49 @@ export default function ClientDashboard() {
   };
 
   const handleCopySeed = () => {
-    if (seedPhrase) {
-      copyToClipboard(seedPhrase);
-      displayMessage('Seed phrase copied! Save it somewhere safe!', 'warning');
-    }
+    if (!seedPhrase) return;
+    copyToClipboard(seedPhrase);
+    displayMessage('Seed phrase copied! Save it somewhere safe!', 'warning');
   };
 
   const handleCopyAddress = () => {
-    if (address) {
-      copyToClipboard(address);
-      displayMessage('Address copied to clipboard!', 'success');
-    }
+    if (!address) return;
+    copyToClipboard(address);
+    displayMessage('Address copied to clipboard!', 'success');
   };
 
   const confirmReset = () => {
-    resetWallet();
     setShowResetModal(false);
-    displayMessage('Wallet reset! A new wallet has been created.', 'warning');
+    disconnectWallet();
   };
 
   const requestTestADA = () => {
-    if (address) {
-      window.open(
-        `https://docs.cardano.org/cardano-testnets/tools/faucet/?address=${address}`,
-        '_blank'
-      );
-    }
+    if (!address) return;
+    window.open(`https://docs.cardano.org/cardano-testnets/tools/faucet/?address=${address}`, '_blank');
   };
 
   const handlePaymentComplete = (txHash: string) => {
     displayMessage(`Payment successful! Tx: ${txHash.slice(0, 10)}...`, 'success');
-    setSelectedClassroom(null);
-    // Reload balance after payment
+    setSelectedCourse(null);
     setTimeout(() => {
-      refreshBalance();
+      refreshBalance().catch((e) => console.error('Error reloading balance:', e));
     }, 2000);
   };
 
-  // Loading state
-  if (loading) {
+  const safeBalance = balance ?? 0;
+
+  if (loading || connecting) {
     return (
       <main className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center max-w-md">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Connecting Wallet</h2>
-          <p className="text-gray-600 dark:text-gray-300">Loading Cardano Preview Testnet...</p>
+          <p className="text-gray-600 dark:text-gray-300">Loading Cardano testnet wallet...</p>
         </div>
       </main>
     );
   }
 
-  // Error state
   if (error) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-red-600 to-orange-600 dark:bg-gray-900 p-8">
@@ -165,11 +143,9 @@ export default function ClientDashboard() {
             <div className="mt-6 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
               <h3 className="font-bold text-yellow-800 mb-2">Troubleshooting:</h3>
               <ul className="text-sm text-yellow-700 space-y-1 list-disc list-inside">
-                <li>Make sure you have a Blockfrost API key</li>
-                <li>Add it to <code className="bg-yellow-100 px-1 rounded">.env.local</code> as <code className="bg-yellow-100 px-1 rounded">NEXT_PUBLIC_BLOCKFROST_API_KEY</code></li>
-                <li>Get a free key at <a href="https://blockfrost.io" target="_blank" className="underline">blockfrost.io</a></li>
-                <li>Make sure to select &quot;Preview&quot; network</li>
-                <li>Restart your dev server after adding the key</li>
+                <li>Set NEXT_PUBLIC_BLOCKFROST_API_KEY (or NEXT_PUBLIC_BLOCKFROST_KEY) for testnet</li>
+                <li>Restart the dev server after updating env</li>
+                <li>Ensure .next cache was cleared if wasm errors persisted</li>
               </ul>
             </div>
 
@@ -190,12 +166,13 @@ export default function ClientDashboard() {
         {/* Message Alert */}
         {message && (
           <div
-            className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg font-bold ${message.type === 'success'
+            className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg font-bold ${
+              message.type === 'success'
                 ? 'bg-green-100 text-green-800 border-2 border-green-300'
                 : message.type === 'warning'
-                  ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
-                  : 'bg-red-100 text-red-800 border-2 border-red-300'
-              }`}
+                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300'
+                : 'bg-red-100 text-red-800 border-2 border-red-300'
+            }`}
           >
             {message.text}
           </div>
@@ -205,10 +182,10 @@ export default function ClientDashboard() {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-8">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-4 lg:space-y-0">
             <div>
-              <h1 className="text-3xl font-bold text-blue-600 mb-2"> Student Dashboard</h1>
+              <h1 className="text-3xl font-bold text-blue-600 mb-2">Student Dashboard</h1>
               <div className="flex items-center space-x-2">
                 <p className="text-gray-600 dark:text-gray-300 text-sm font-mono">
-                  {address?.slice(0, 20)}...{address?.slice(-10)}
+                  {address ? `${address.slice(0, 20)}...${address.slice(-10)}` : 'Not connected'}
                 </p>
                 <button
                   onClick={handleCopyAddress}
@@ -223,7 +200,7 @@ export default function ClientDashboard() {
               {/* Balance */}
               <div className="bg-blue-50 rounded-lg px-6 py-3 border-2 border-blue-200">
                 <p className="text-sm text-blue-600 mb-1">Your Balance</p>
-                <p className="text-2xl font-bold text-blue-800">{balance.toFixed(2)} tADA</p>
+                <p className="text-2xl font-bold text-blue-800">{safeBalance.toFixed(2)} tADA</p>
               </div>
 
               {/* Wallet Actions */}
@@ -234,7 +211,7 @@ export default function ClientDashboard() {
                 >
                   View Seed Phrase
                 </button>
-                {balance < 10 && (
+                {safeBalance < 10 && (
                   <button
                     onClick={requestTestADA}
                     className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition whitespace-nowrap"
@@ -250,60 +227,60 @@ export default function ClientDashboard() {
         {/* Warning Banner */}
         <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-8">
           <p className="text-yellow-800">
-            <strong>⚠️ Testnet Wallet:</strong> This is a Preview testnet wallet. Your seed phrase is
-            stored in browser localStorage. Make sure to back it up!
+            <strong>Testnet Wallet:</strong> This is a testnet wallet. Your seed phrase is stored in browser localStorage. Make sure to back it up!
           </p>
         </div>
 
         {/* Main Content */}
         <div className="grid lg:grid-cols-3 gap-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-          {/* Classroom List */}
+          {/* course List */}
           <div className="lg:col-span-2">
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Available Courses</h2>
 
               <div className="space-y-4">
-                {MOCK_CLASSROOMS.map((classroom) => (
+                {MOCK_COURSES.map((course) => (
                   <div
-                    key={classroom.id}
+                    key={course.id}
                     className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition"
                   >
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
-                        <h3 className="text-xl font-bold text-gray-800 mb-1">{classroom.name}</h3>
-                        <p className="text-sm text-gray-600 mb-2">by {classroom.teacherName}</p>
-                        <p className="text-gray-700 text-sm mb-3">{classroom.description}</p>
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">{course.name}</h3>
+                        <p className="text-sm text-gray-600 mb-2">by {course.teacherName}</p>
+                        <p className="text-gray-700 text-sm mb-3">{course.description}</p>
                       </div>
 
                       <div className="text-right ml-4">
-                        <p className="text-2xl font-bold text-purple-600">{classroom.price} tADA</p>
+                        <p className="text-2xl font-bold text-purple-600">{course.price} tADA</p>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
                       <div className="flex items-center">
                         <span className="mr-1">📅</span>
-                        {classroom.duration}
+                        {course.duration}
                       </div>
                       <div className="flex items-center">
                         <span className="mr-1">⭐</span>
-                        {classroom.rating} rating
+                        {course.rating} rating
                       </div>
                       <div className="flex items-center">
                         <span className="mr-1">👥</span>
-                        {classroom.students} students
+                        {course.students} students
                       </div>
                     </div>
 
                     <button
-                      onClick={() => setSelectedClassroom(classroom)}
-                      disabled={balance < classroom.price}
-                      className={`w-full font-bold py-3 px-6 rounded-lg transition ${balance < classroom.price
+                      onClick={() => setSelectedCourse(course)}
+                      disabled={safeBalance < course.price}
+                      className={`w-full font-bold py-3 px-6 rounded-lg transition ${
+                        safeBalance < course.price
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 text-white'
-                        }`}
+                      }`}
                     >
-                      {balance < classroom.price ? 'Insufficient Balance' : 'Enroll Now →'}
+                      {safeBalance < course.price ? 'Insufficient Balance' : 'Enroll Now →'}
                     </button>
                   </div>
                 ))}
@@ -313,14 +290,14 @@ export default function ClientDashboard() {
 
           {/* Payment/Wallet Section */}
           <div>
-            {selectedClassroom ? (
+            {selectedCourse ? (
               <EscrowPayment
-                classroom={selectedClassroom}
+                course={selectedCourse}
                 lucid={lucid}
-                studentAddress={address || ''}
-                currentBalance={balance}
+                senderAddress={address}
+                currentBalance={safeBalance}
                 onPaymentComplete={handlePaymentComplete}
-                onCancel={() => setSelectedClassroom(null)}
+                onCancel={() => setSelectedCourse(null)}
               />
             ) : (
               <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
@@ -392,7 +369,7 @@ export default function ClientDashboard() {
                 </p>
               </div>
               <div className="bg-gray-100 p-4 rounded-lg mb-4">
-                <p className="font-mono text-sm break-all text-gray-800">{seedPhrase}</p>
+                <p className="font-mono text-sm break-all text-gray-800">{seedPhrase ?? 'No seed available'}</p>
               </div>
               <div className="flex space-x-3">
                 <button
@@ -420,8 +397,7 @@ export default function ClientDashboard() {
               <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
                 <p className="text-red-800 font-bold mb-2">⚠️ WARNING: This action is irreversible!</p>
                 <p className="text-red-700 text-sm">
-                  You will lose access to the current wallet and any funds in it unless you have saved
-                  the seed phrase.
+                  You will lose access to the current wallet and any funds in it unless you have saved the seed phrase.
                 </p>
               </div>
               <div className="flex space-x-3">

@@ -1,77 +1,98 @@
-// src/app/lib/lucid.ts
 import type { LucidEvolution } from '@lucid-evolution/lucid';
 
-const BLOCKFROST_URL = `https://cardano-${process.env.NEXT_PUBLIC_NETWORK?.toLowerCase() || 'preview'}.blockfrost.io/api/v0`;
-const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || '';
-const NETWORK = (process.env.NEXT_PUBLIC_NETWORK as 'Preview' | 'Mainnet') || 'Preview';
-
-export type WalletName = 'nami' | 'eternl' | 'flint' | 'lace';
-
-export async function initLucid(): Promise<LucidEvolution> {
-  try {
-    if (!BLOCKFROST_API_KEY) {
-      throw new Error('Blockfrost API key is not configured');
-    }
-
-    const mod = await import('@lucid-evolution/lucid');
-    const Lucid = (mod as any).Lucid;
-    const Blockfrost = (mod as any).Blockfrost;
-    if (typeof Lucid !== 'function' || typeof Blockfrost !== 'function') {
-      throw new Error('Lucid or Blockfrost import failed');
-    }
-
-    const lucid = await Lucid(
-      new Blockfrost(BLOCKFROST_URL, BLOCKFROST_API_KEY),
-      NETWORK
+/**
+ * Initialize Lucid with Blockfrost provider
+ * Can be used with an external wallet API or standalone
+ */
+export async function getLucid(walletApi?: any): Promise<LucidEvolution> {
+  const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || process.env.NEXT_PUBLIC_BLOCKFROST_KEY;
+  
+  if (!blockfrostApiKey) {
+    throw new Error(
+      'NEXT_PUBLIC_BLOCKFROST_API_KEY is not set. Please add it to your .env.local file'
     );
-    
-    console.log('✅ Lucid initialized');
-    console.log(`📡 Network: ${NETWORK}`);
-    
-    return lucid;
-  } catch (error) {
-    console.error('❌ Failed to initialize Lucid:', error);
-    throw new Error('Failed to initialize Lucid. Check your Blockfrost API key.');
   }
+
+  console.log('🔧 Initializing Lucid with Blockfrost...');
+  console.log('📍 API Key found:', blockfrostApiKey.substring(0, 10) + '...');
+
+  const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid');
+
+  // HARDCODED TO PREPROD - Change this if you need Preview
+  const network = 'Preprod';
+  const blockfrostUrl = 'https://cardano-preprod.blockfrost.io/api/v0';
+
+  console.log('🌐 Network:', network);
+  console.log('🔗 Blockfrost URL:', blockfrostUrl);
+
+  // Initialize Lucid with Blockfrost provider
+  const lucid = await Lucid(
+    new Blockfrost(blockfrostUrl, blockfrostApiKey),
+    network
+  );
+
+  console.log('✅ Lucid instance created successfully');
+
+  // If a wallet API is provided (e.g., from Nami, Eternl), connect it
+  if (walletApi) {
+    lucid.selectWallet.fromAPI(walletApi);
+  }
+
+  return lucid;
 }
 
-export async function connectWallet(
-  lucid: LucidEvolution,
-  walletName: WalletName
-): Promise<string> {
-  if (typeof window === 'undefined') {
-    throw new Error('Wallet connection only available in browser');
+/**
+ * Initialize Lucid from a seed phrase (for development/testing)
+ */
+export async function getLucidFromSeed(seedPhrase: string): Promise<LucidEvolution> {
+  const blockfrostApiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || process.env.NEXT_PUBLIC_BLOCKFROST_KEY;
+  
+  if (!blockfrostApiKey) {
+    throw new Error(
+      'NEXT_PUBLIC_BLOCKFROST_API_KEY is not set. Please add it to your .env.local file'
+    );
   }
+
+  console.log('🔧 Initializing Lucid from seed phrase...');
+  console.log('📍 API Key found:', blockfrostApiKey.substring(0, 10) + '...');
+
+  const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid');
+
+  // HARDCODED TO PREPROD - Change this if you need Preview
+  const network = 'Preprod';
+  const blockfrostUrl = 'https://cardano-preprod.blockfrost.io/api/v0';
+
+  console.log('🌐 Network:', network);
+  console.log('🔗 Blockfrost URL:', blockfrostUrl);
 
   try {
-    const walletAPI = window.cardano?.[walletName];
-    
-    if (!walletAPI) {
-      throw new Error(`${walletName} wallet not installed`);
-    }
+    const lucid = await Lucid(
+      new Blockfrost(blockfrostUrl, blockfrostApiKey),
+      network
+    );
 
-    const api = await walletAPI.enable();
-    lucid.selectWallet.fromAPI(api);
+    console.log('✅ Lucid instance created');
 
-    const address = await lucid.wallet().address();
+    // Select wallet from seed phrase
+    lucid.selectWallet.fromSeed(seedPhrase);
     
-    console.log('✅ Wallet connected');
-    console.log(`👛 Address: ${address.slice(0, 20)}...`);
-    
-    return address;
+    console.log('✅ Wallet selected from seed phrase');
+
+    return lucid;
   } catch (error: any) {
-    console.error('❌ Failed to connect wallet:', error);
-    
-    if (error.code === 2) {
-      throw new Error('Wallet connection was rejected by user');
-    }
-    
-    throw new Error(error.message || 'Failed to connect wallet');
+    console.error('❌ Failed to initialize Lucid:', error);
+    console.error('Error details:', error?.message, error?.stack);
+    throw error;
   }
 }
 
+/**
+ * Get wallet balance from UTXOs
+ * Returns both lovelace and all native assets
+ */
 export async function getWalletBalance(lucid: LucidEvolution): Promise<{
   lovelace: bigint;
+  ada: number;
   assets: Record<string, bigint>;
 }> {
   try {
@@ -80,64 +101,124 @@ export async function getWalletBalance(lucid: LucidEvolution): Promise<{
     let lovelace = BigInt(0);
     const assets: Record<string, bigint> = {};
     
+    // Sum up all UTXOs
     for (const utxo of utxos) {
-      lovelace += utxo.assets.lovelace;
+      // Add lovelace
+      if (utxo.assets?.lovelace) {
+        const lovelaceValue = utxo.assets.lovelace;
+        if (typeof lovelaceValue === 'bigint') {
+          lovelace += lovelaceValue;
+        } else if (typeof lovelaceValue === 'string') {
+          lovelace += BigInt(lovelaceValue);
+        } else if (typeof lovelaceValue === 'number') {
+          lovelace += BigInt(lovelaceValue);
+        }
+      }
       
-      for (const [unit, amount] of Object.entries(utxo.assets)) {
+      // Add native assets (tokens, NFTs)
+      for (const [unit, amount] of Object.entries(utxo.assets || {})) {
         if (unit === 'lovelace') continue;
-        assets[unit] = (assets[unit] || BigInt(0)) + amount;
+        
+        const amountBigInt = typeof amount === 'bigint' 
+          ? amount 
+          : BigInt(amount);
+        
+        assets[unit] = (assets[unit] || BigInt(0)) + amountBigInt;
       }
     }
     
-    return { lovelace, assets };
+    return { 
+      lovelace, 
+      ada: lovelaceToAda(lovelace),
+      assets 
+    };
   } catch (error) {
-    console.error('❌ Failed to get balance:', error);
+    console.error('Failed to get wallet balance:', error);
     throw error;
   }
 }
 
-export function lovelaceToAda(lovelace: bigint): string {
-  return (Number(lovelace) / 1_000_000).toFixed(6);
-}
-
-export function formatAssetAmount(amount: bigint, decimals: number = 0): string {
-  if (decimals === 0) return amount.toString();
-  return (Number(amount) / Math.pow(10, decimals)).toFixed(decimals);
-}
-
-export function isWalletInstalled(walletName: WalletName): boolean {
-  if (typeof window === 'undefined') return false;
-  return !!(window.cardano?.[walletName]);
-}
-
-export function getInstalledWallets(): WalletName[] {
-  if (typeof window === 'undefined') return [];
+/**
+ * Get balance in real-time with polling
+ * Useful for updating UI after transactions
+ */
+export function watchBalance(
+  lucid: LucidEvolution,
+  callback: (balance: { lovelace: bigint; ada: number; assets: Record<string, bigint> }) => void,
+  intervalMs: number = 5000 // Poll every 5 seconds by default
+): () => void {
+  let isActive = true;
   
-  const wallets: WalletName[] = [];
-  const availableWallets: WalletName[] = ['nami', 'eternl', 'flint', 'lace'];
-  
-  for (const wallet of availableWallets) {
-    if (isWalletInstalled(wallet)) {
-      wallets.push(wallet);
+  const poll = async () => {
+    while (isActive) {
+      try {
+        const balance = await getWalletBalance(lucid);
+        callback(balance);
+      } catch (error) {
+        console.error('Balance polling error:', error);
+      }
+      
+      // Wait for the interval
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
-  }
+  };
   
-  return wallets;
-}
-
-export function getWalletInfo(walletName: WalletName): { name: string; icon?: string } | null {
-  if (typeof window === 'undefined') return null;
+  // Start polling
+  poll();
   
-  const walletAPI = window.cardano?.[walletName];
-  
-  if (!walletAPI) return null;
-  
-  return {
-    name: walletName,
-    icon: undefined,
+  // Return cleanup function to stop polling
+  return () => {
+    isActive = false;
   };
 }
 
-export function disconnectWallet(): void {
-  console.log('🔌 Wallet disconnected');
+/**
+ * Helper to convert lovelace (smallest unit) to ADA
+ */
+export function lovelaceToAda(lovelace: bigint | number | string): number {
+  const value = typeof lovelace === 'bigint' 
+    ? lovelace 
+    : BigInt(lovelace);
+  return Number(value) / 1_000_000;
+}
+
+/**
+ * Helper to convert ADA to lovelace
+ */
+export function adaToLovelace(ada: number): bigint {
+  return BigInt(Math.floor(ada * 1_000_000));
+}
+
+/**
+ * Format asset name from policy ID + asset name
+ */
+export function formatAssetUnit(policyId: string, assetName: string): string {
+  return policyId + assetName;
+}
+
+/**
+ * Parse asset unit into policy ID and asset name
+ */
+export function parseAssetUnit(unit: string): { policyId: string; assetName: string } {
+  if (unit === 'lovelace') {
+    return { policyId: '', assetName: 'lovelace' };
+  }
+  
+  // Policy ID is always 56 characters (28 bytes hex)
+  const policyId = unit.slice(0, 56);
+  const assetName = unit.slice(56);
+  
+  return { policyId, assetName };
+}
+
+/**
+ * Decode asset name from hex to UTF-8 string
+ */
+export function decodeAssetName(hexName: string): string {
+  try {
+    const bytes = hexName.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || [];
+    return String.fromCharCode(...bytes);
+  } catch {
+    return hexName; // Return hex if decoding fails
+  }
 }

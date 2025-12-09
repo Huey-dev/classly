@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import BottomNavigation from "./component/BottomNavigation";
+import Script from "next/script";
+import LucidProviderClient from "./providers/LucidProviderClient";
 
 
 const inter = Inter({
@@ -44,12 +45,11 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
-          <BottomNavigation>
-            {" "}
-         
+          <LucidProviderClient>
+            <BottomNavigation>
               <ThemeProvider>{children}</ThemeProvider>
-            
-          </BottomNavigation>
+            </BottomNavigation>
+          </LucidProviderClient>
         </SessionProvider>
       </body>
     </html>

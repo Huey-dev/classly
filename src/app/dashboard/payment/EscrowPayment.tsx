@@ -8,11 +8,11 @@
 import { useState, useEffect } from 'react';
 import type { LucidEvolution } from '@lucid-evolution/lucid';
 
-interface ClassroomInfo {
+interface CourseInfo {
   id: string;
   name: string;
-  teacherAddress: string;
-  teacherName: string;
+  receiverAddress: string;
+  receiverName: string;
   price: number; // in ADA
   duration: string;
   description: string;
@@ -21,18 +21,18 @@ interface ClassroomInfo {
 }
 
 interface EscrowPaymentProps {
-  classroom: ClassroomInfo;
+  course:  CourseInfo;
   lucid?: LucidEvolution | null; // Optional: from StudentDashboard
-  studentAddress?: string; // Optional: from StudentDashboard
+  senderAddress?: string  | null; // Optional: from StudentDashboard
   currentBalance?: number; // Optional: from StudentDashboard
   onPaymentComplete?: (txHash: string) => void;
   onCancel?: () => void;
 }
 
 export function EscrowPayment({ 
-  classroom, 
+  course, 
   lucid: lucidProp,
-  studentAddress: studentAddressProp,
+  senderAddress: senderAddressProp,
   currentBalance: currentBalanceProp,
   onPaymentComplete,
   onCancel
@@ -51,7 +51,7 @@ export function EscrowPayment({
   }, [currentBalanceProp]);
 
   const lucid = lucidProp;
-  const address = studentAddressProp;
+  const address = senderAddressProp;
   const isConnected = !!(lucid && address);
 
   // Handle payment
@@ -66,9 +66,9 @@ export function EscrowPayment({
       return;
     }
 
-    const totalRequired = classroom.price + 2.2; // Class price + estimated fees
+    const totalRequired = course.price + 2.2; // Class price + estimated fees
     if (balance < totalRequired) {
-      setError(`Insufficient balance. You need at least ${totalRequired.toFixed(2)} ADA (${classroom.price} ADA for class + ~2.2 ADA for fees)`);
+      setError(`Insufficient balance. You need at least ${totalRequired.toFixed(2)} ADA (${course.price} ADA for class + ~2.2 ADA for fees)`);
       return;
     }
 
@@ -78,18 +78,18 @@ export function EscrowPayment({
     try {
       console.log('=== Starting Payment Transaction ===');
       console.log('From:', address);
-      console.log('To:', classroom.teacherAddress);
-      console.log('Amount:', classroom.price, 'ADA');
+      console.log('To:', course.receiverAddress);
+      console.log('Amount:', course.price, 'ADA');
 
       // Convert ADA to Lovelace (1 ADA = 1,000,000 Lovelace)
-      const lovelaceAmount = BigInt(classroom.price * 1_000_000);
+      const lovelaceAmount = BigInt(course.price * 1_000_000);
 
       console.log('Building transaction...');
       
       // Build simple payment transaction
       const tx = await lucid
         .newTx()
-        .pay.ToAddress(classroom.teacherAddress, { lovelace: lovelaceAmount })
+        .pay.ToAddress(course.receiverAddress, { lovelace: lovelaceAmount })
         .complete();
 
       console.log('Transaction built successfully');
@@ -189,7 +189,7 @@ export function EscrowPayment({
             <ul className="text-sm text-blue-700 dark:text-blue-500 text-left space-y-1">
               <li>✅ Payment sent to teacher's address</li>
               <li>✅ Transaction is confirmed on Cardano blockchain</li>
-              <li>✅ You can now access the classroom materials</li>
+              <li>✅ You can now access the course materials</li>
               <li>⏳ It may take 1-2 minutes for the transaction to appear on the explorer</li>
             </ul>
           </div>
@@ -203,26 +203,26 @@ export function EscrowPayment({
       {/* Header */}
       <div className="bg-blue-600 text-white p-6 rounded-t-xl">
         <h2 className="text-2xl font-bold mb-2">Enroll in this Course</h2>
-        <p className="text-purple-100">{classroom.name}</p>
+        <p className="text-purple-100">{course.name}</p>
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Classroom Info */}
+        {/* course Info */}
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
           <h3 className="font-bold text-gray-800 dark:text-gray-200 mb-3">Class Details</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Instructor:</span>
-              <span className="font-semibold text-gray-800 dark:text-gray-200">{classroom.teacherName}</span>
+              <span className="font-semibold text-gray-800 dark:text-gray-200">{course.receiverName}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Duration:</span>
-              <span className="font-semibold text-gray-800 dark:text-gray-200">{classroom.duration}</span>
+              <span className="font-semibold text-gray-800 dark:text-gray-200">{course.duration}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Price:</span>
               <span className="font-bold text-purple-600 dark:text-purple-400 text-lg">
-                {classroom.price} tADA
+                {course.price} tADA
               </span>
             </div>
           </div>
@@ -236,9 +236,9 @@ export function EscrowPayment({
               {balance.toFixed(2)} tADA
             </span>
           </div>
-          {balance < classroom.price + 2.2 && (
+          {balance < course.price + 2.2 && (
             <p className="text-red-600 dark:text-red-400 text-sm mt-2">
-              Insufficient balance. Need at least {(classroom.price + 2.2).toFixed(2)} tADA
+              Insufficient balance. Need at least {(course.price + 2.2).toFixed(2)} tADA
             </p>
           )}
         </div>
@@ -256,7 +256,7 @@ export function EscrowPayment({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-700 dark:text-gray-300">
               <span>Class Fee:</span>
-              <span>{classroom.price} tADA</span>
+              <span>{course.price} tADA</span>
             </div>
             <div className="flex justify-between text-gray-700 dark:text-gray-300">
               <span>Transaction Fee (est.):</span>
@@ -268,7 +268,7 @@ export function EscrowPayment({
             </div>
             <div className="border-t border-gray-300 dark:border-gray-600 pt-2 mt-2 flex justify-between font-bold text-gray-800 dark:text-gray-200">
               <span>Total Required:</span>
-              <span className="text-purple-600 dark:text-purple-400">~{(classroom.price + 2.2).toFixed(1)} tADA</span>
+              <span className="text-purple-600 dark:text-purple-400">~{(course.price + 2.2).toFixed(1)} tADA</span>
             </div>
           </div>
         </div>
@@ -277,7 +277,7 @@ export function EscrowPayment({
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Payment will be sent to:</p>
           <p className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all">
-            {classroom.teacherAddress}
+            {course.receiverAddress}
           </p>
         </div>
 
@@ -300,7 +300,7 @@ export function EscrowPayment({
         {/* Payment Button */}
         <button
           onClick={handlePayment}
-          disabled={loading || !agreedToTerms || balance < classroom.price + 2.2}
+          disabled={loading || !agreedToTerms || balance < course.price + 2.2}
           className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-6 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
@@ -309,7 +309,7 @@ export function EscrowPayment({
               Processing Payment...
             </span>
           ) : (
-            `💳 Pay ${classroom.price} tADA & Enroll`
+            `💳 Pay ${course.price} tADA & Enroll`
           )}
         </button>
 
