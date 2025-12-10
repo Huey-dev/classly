@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import MuxUploader, { MuxUploaderDrop, MuxUploaderFileSelect } from '@mux/mux-uploader-react';
 import { useRouter } from 'next/navigation';
 import { saveVideoToLibrary } from '../../../lib/actions';
-
+import Link from 'next/link';
 // Unique ID for the hidden MuxUploader component
 const UPLOADER_ID = 'custom-mux-uploader';
 
@@ -21,6 +21,7 @@ export default function UploadClient() {
   const [newCourseDescription, setNewCourseDescription] = useState("");
   const [newCourseCover, setNewCourseCover] = useState("");
   const [partNumber, setPartNumber] = useState<number | undefined>(undefined);
+  const [addLesson, setAddLesson] = useState(false);
 
   // Upload/Processing State
   const [uploadId, setUploadId] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function UploadClient() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [titleWarning, setTitleWarning] = useState(false);
 
@@ -192,8 +194,15 @@ export default function UploadClient() {
 
   // --- Render Function ---
   const isFormDisabled = isUploading || isSaving;
-  const canPublish = uploadComplete && title && !isSaving && (mode === "video" || courseId.trim());
-  const isUploadDisabled = isFormDisabled || !title.trim() || (mode === "course" && !courseId.trim());
+  const canPublish =
+    uploadComplete &&
+    title &&
+    !isSaving &&
+    (mode === "video" || (mode === "course" && courseId.trim() && addLesson));
+  const isUploadDisabled =
+    isFormDisabled ||
+    !title.trim() ||
+    (mode === "course" && (!courseId.trim() || !addLesson));
 
   const requireTitleMessage = !title.trim() ? "Please provide a video title to start uploading." : null;
   const handleGuardedUploadClick = (e: React.MouseEvent) => {
@@ -226,7 +235,7 @@ export default function UploadClient() {
           </button>
 
           <span className="font-semibold text-base text-gray-900">
-            Upload Video
+            Upload Content
           </span>
 
           <button
@@ -246,6 +255,16 @@ export default function UploadClient() {
         {/* Added padding adjustments for mobile/tablet/desktop */}
         <div className="flex-1 px-4 sm:px-6 py-6 space-y-8 overflow-y-auto"> 
           
+        {/* Intro / guidance */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 space-y-1">
+            <p className="font-semibold">How to use this uploader</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Standalone video: publishes a single video. You can attach it to a course later.</li>
+              <li>Course lesson: pick or create a course below, then upload each part (e.g., Part 1 to 7) in order.</li>
+              <li>After selecting/creating a course, copy its link to share with learners or teammates.</li>
+            </ul>
+          </div>
+
           {/* Mode Tabs */}
           <div className="flex items-center gap-3">
             {[
@@ -280,20 +299,35 @@ export default function UploadClient() {
           {/* Success Banner (Simplified) */}
           {canPublish && !isSaving && (
             <div className="bg-green-100 border-l-4 border-green-500 rounded p-4">
-              <p className="font-semibold text-green-800">✅ Video Uploaded. Ready to Publish!</p>
+              <p className="font-semibold text-green-800">Upload complete. Ready to publish.</p>
             </div>
           )}
 
           {/* Error Display (Simplified) */}
           {error && (
             <div className="bg-red-100 border-l-4 border-red-500 rounded p-4">
-              <p className="font-semibold text-red-800">⚠️ Error: {error}</p>
+              <p className="font-semibold text-red-800">Error: {error}</p>
             </div>
           )}
 
-          {/* Video Metadata Section (Title, Description, etc.) */}
+          {/* Lesson/Video Metadata Section */}
+          {(mode === "video" || (mode === "course" && addLesson)) && (
           <div className="space-y-6">
-            <h3 className="text-xl font-bold text-gray-900 border-b pb-3">Video Details</h3>
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-xl font-bold text-gray-900">{mode === "video" ? "Video Details" : "Lesson Details"}</h3>
+              {mode === "course" ? (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={addLesson}
+                    onChange={(e) => setAddLesson(e.target.checked)}
+                    className="h-4 w-4"
+                    disabled={isFormDisabled}
+                  />
+                  Add first lesson now (optional)
+                </label>
+              ) : null}
+            </div>
 
             {/* Title */}
             <div className="space-y-2">
@@ -335,14 +369,14 @@ export default function UploadClient() {
               />
             </div>
 
-            {/* Course association (only when course mode) */}
-            {mode === "course" && (
-              <div className="space-y-2">
-                <label className="text-sm text-gray-700 font-medium">
-                  Course (required for lessons)
-                </label>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Course association (only when course mode) */}
+          {mode === "course" && (
+            <div className="space-y-2">
+              <label className="text-sm text-gray-700 font-medium">
+                Course (required for lessons)
+              </label>
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <select
                       value={courseId}
                       onChange={(e) => setCourseId(e.target.value)}
@@ -413,12 +447,48 @@ export default function UploadClient() {
                   <p className="text-xs text-gray-500">
                     Create a course here to turn this upload into the first lesson, or pick an existing course to add more lessons.
                   </p>
+
+                  {courseId ? (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-2">
+                      <div className="text-sm text-blue-800 break-all">
+                        <div className="font-semibold">Course link</div>
+                        <Link href={`/course/${courseId}`} className="text-xs text-blue-700 underline">
+                          {`/course/${courseId}`}
+                        </Link>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/course/${courseId}`;
+                          navigator.clipboard.writeText(url);
+                          setError(null);
+                          setMessage(`Course link copied: ${url}`);
+                        }}
+                        className="px-3 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 transition"
+                      >
+                        Copy link
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      id="add-lesson"
+                      checked={addLesson}
+                      onChange={(e) => setAddLesson(e.target.checked)}
+                      className="h-4 w-4"
+                      disabled={isFormDisabled}
+                    />
+                    <label htmlFor="add-lesson">Add a lesson now (optional)</label>
+                  </div>
                 </div>
               </div>
             )}
           </div>
-          
+          )}
           {/* Video Upload Section */}
+          {(mode === "video" || (mode === "course" && addLesson)) && (
           <div className="space-y-4 py-2 border-t pt-8">
             <h3 className="text-xl font-bold text-gray-900">
               Video File
@@ -551,6 +621,7 @@ export default function UploadClient() {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
