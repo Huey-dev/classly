@@ -12,7 +12,7 @@ export async function POST(
   }
 
   const { id: courseId } = await params;
-  const { contentId, partNumber } = await req.json();
+  const { contentId, partNumber, sectionTitle } = await req.json();
 
   if (!contentId) {
     return NextResponse.json({ error: "contentId is required" }, { status: 400 });
@@ -32,6 +32,7 @@ export async function POST(
     where: { id: contentId },
     data: {
       courseId,
+      accessLevel: typeof sectionTitle === "string" ? sectionTitle.trim() || null : content.accessLevel,
       partNumber: typeof partNumber === "number" ? partNumber : content.partNumber,
     },
     select: { id: true, courseId: true, partNumber: true, title: true },

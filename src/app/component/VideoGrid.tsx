@@ -128,7 +128,7 @@ function VideoCard({ video }: { video: Video }) {
     .slice(0, 2) || 'U';
 
   return (
-    <div className="group rounded-2xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col h-full border border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transform hover:-translate-y-1 max-w-[540px] w-full">
+    <div className="group rounded-md sm:rounded-2xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col h-full border border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transform hover:-translate-y-1 max-w-[540px] w-full">
       <a href={`/video/${video.id}`} className="block relative aspect-[16/8.5] overflow-hidden bg-black">
         {thumbnail ? (
           <img

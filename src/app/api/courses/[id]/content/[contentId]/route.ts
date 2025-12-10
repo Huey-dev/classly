@@ -17,7 +17,7 @@ export async function DELETE(
 
   await prisma.content.update({
     where: { id: contentId },
-    data: { courseId: null, partNumber: null },
+    data: { courseId: null, partNumber: null, accessLevel: null },
   });
 
   return NextResponse.json({ success: true });

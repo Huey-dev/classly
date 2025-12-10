@@ -53,7 +53,7 @@ export default function ExploreTab() {
   const router = useRouter();
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-hide">
+    <div className="flex mt-2 p-1 gap-3 overflow-x-auto pb-3 scrollbar-hide">
       {tabs.map((tab) => {
         const isActive = pathname.includes(tab.key);
 

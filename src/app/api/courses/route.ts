@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
       description: course.description,
       visibility: course.visibility,
       slug: course.slug,
+      language: course.language,
       createdAt: course.createdAt,
       contentCount: course._count.contents,
       enrollmentCount: course._count.enrollments,
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { title, description, coverImage } = await req.json();
+  const { title, description, coverImage, category } = await req.json();
   if (!title || typeof title !== "string") {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       slug: uniqueSlug,
       visibility: "DRAFT",
+      language: typeof category === "string" ? category : null,
     },
   });
 
@@ -69,5 +71,6 @@ export async function POST(req: NextRequest) {
     description: course.description,
     coverImage: course.coverImage,
     slug: course.slug,
+    language: course.language,
   });
 }

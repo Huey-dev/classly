@@ -12,6 +12,10 @@ interface SaveDraftParams {
   muxUploadId: string;
   courseId?: string;
   partNumber?: number;
+  sectionTitle?: string;
+  durationSeconds?: number;
+  fileSizeBytes?: number;
+  fileFormat?: string;
 }
 
 /**
@@ -25,7 +29,17 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
     throw new Error("Unauthorized");
   }
 
-  const { title, description, muxUploadId, courseId, partNumber } = params;
+  const {
+    title,
+    description,
+    muxUploadId,
+    courseId,
+    partNumber,
+    sectionTitle,
+    durationSeconds,
+    fileSizeBytes,
+    fileFormat,
+  } = params;
 
   try {
     // 1. Verify the upload exists in Mux
@@ -75,8 +89,31 @@ export async function saveVideoToLibrary(params: SaveDraftParams) {
         classroomId: null,
         courseId: courseId || null,
         partNumber: partNumber ?? null,
+        accessLevel: sectionTitle?.trim() || null,
       },
     });
+
+    if (courseId) {
+      revalidatePath(`/course/${courseId}`);
+    }
+
+    // Best-effort seed metadata so durations show immediately
+    if (durationSeconds !== undefined || fileSizeBytes !== undefined || fileFormat !== undefined) {
+      await prisma.mediaMetadata.upsert({
+        where: { contentId: newVideo.id },
+        update: {
+          duration: durationSeconds ?? undefined,
+          size: fileSizeBytes ?? undefined,
+          format: fileFormat ?? undefined,
+        },
+        create: {
+          contentId: newVideo.id,
+          duration: durationSeconds ?? 0,
+          size: fileSizeBytes ?? 0,
+          format: fileFormat ?? "unknown",
+        },
+      });
+    }
     revalidatePath("/");                
     revalidatePath("/explore");          
     revalidatePath(`/video/${newVideo.id}`); 

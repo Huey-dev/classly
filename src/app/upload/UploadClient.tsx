@@ -1,657 +1,958 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import MuxUploader, { MuxUploaderDrop, MuxUploaderFileSelect } from '@mux/mux-uploader-react';
-import { useRouter } from 'next/navigation';
+import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { saveVideoToLibrary } from '../../../lib/actions';
-import Link from 'next/link';
-// Unique ID for the hidden MuxUploader component
-const UPLOADER_ID = 'custom-mux-uploader';
+
+type CourseForm = {
+  title: string;
+  description: string;
+  category: string;
+};
+
+type VideoDraft = {
+  id: string;
+  title: string;
+  description: string;
+  file?: File;
+  duration?: number | null;
+  size?: number;
+  status: 'idle' | 'uploading' | 'uploaded' | 'error';
+  progress: number;
+  error?: string;
+};
+
+type SectionDraft = {
+  id: string;
+  title: string;
+  description: string;
+  videos: VideoDraft[];
+};
+
+type ToastKind = 'course_created' | 'video_uploaded' | 'section_added';
+
+type ExistingCourse = {
+  id: string;
+  title: string;
+  description: string | null;
+  language?: string | null;
+  coverImage?: string | null;
+  videoCount?: number;
+};
+
+const categoryOptions = [
+  'Web Development',
+  'Mobile Development',
+  'Data Science',
+  'Design',
+  'Business',
+  'Other',
+];
 
 export default function UploadClient() {
-  // State for user input metadata
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<"video" | "course">("video");
-  const [courseId, setCourseId] = useState('');
-  const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
-  const [loadingCourses, setLoadingCourses] = useState(false);
-  const [creatingCourse, setCreatingCourse] = useState(false);
-  const [newCourseTitle, setNewCourseTitle] = useState("");
-  const [newCourseDescription, setNewCourseDescription] = useState("");
-  const [newCourseCover, setNewCourseCover] = useState("");
-  const [partNumber, setPartNumber] = useState<number | undefined>(undefined);
-  const [addLesson, setAddLesson] = useState(false);
-
-  // Upload/Processing State
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadComplete, setUploadComplete] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [titleWarning, setTitleWarning] = useState(false);
-
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const attachCourseId = searchParams.get('courseId');
+  const isAttachMode = Boolean(attachCourseId);
+  const [attachCourse, setAttachCourse] = useState<ExistingCourse | null>(null);
+  const [loadingCourse, setLoadingCourse] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [videoAccordionOpen, setVideoAccordionOpen] = useState(false);
+  const [sections, setSections] = useState<SectionDraft[]>([]);
+  const [overlay, setOverlay] = useState<{ open: boolean; text: string }>({ open: false, text: '' });
+  const [toast, setToast] = useState<ToastKind | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isValid },
+    setError: setFormError,
+    clearErrors,
+    reset,
+  } = useForm<CourseForm>({
+    mode: 'onChange',
+    defaultValues: {
+      title: '',
+      description: '',
+      category: '',
+    },
+  });
+
+  const hasQueuedVideos = useMemo(
+    () => sections.some((section) => section.videos.some((video) => video.file)),
+    [sections]
+  );
+  const imageRequired = !isAttachMode;
+  const formReady = isAttachMode ? true : isValid;
 
   useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!attachCourseId) return;
     let active = true;
+    setLoadingCourse(true);
     (async () => {
-      setLoadingCourses(true);
       try {
-        const res = await fetch('/api/courses');
-        if (!res.ok) return;
+        const res = await fetch(`/api/courses/${attachCourseId}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to load course');
+        }
         const data = await res.json();
-        if (active) setCourses(data);
+        if (!active) return;
+        setAttachCourse({
+          id: data.id,
+          title: data.title,
+          description: data.description ?? null,
+          language: data.language ?? null,
+          coverImage: data.coverImage ?? null,
+          videoCount: data.videoCount ?? 0,
+        });
+        reset({
+          title: data.title || '',
+          description: data.description || '',
+          category: data.language || '',
+        });
+        if (data.coverImage) {
+          setImagePreview(data.coverImage);
+        }
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load course');
       } finally {
-        if (active) setLoadingCourses(false);
+        if (active) setLoadingCourse(false);
       }
     })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [attachCourseId, reset]);
 
-  // --- Mux API Interaction ---
-  const getUploadUrl = async () => {
-    if (!title.trim()) {
-      setError('Please add a video title before uploading');
-      setTitleWarning(true);
-      throw new Error('Title required');
+  useEffect(() => {
+    if (attachCourseId) {
+      setVideoAccordionOpen(true);
     }
-    if (mode === "course" && !courseId.trim()) {
-      setError("Select or create a course before uploading");
-      throw new Error("Course required");
+  }, [attachCourseId]);
+
+  const onSubmit = handleSubmit(async (values) => {
+    setError(null);
+
+    if (isAttachMode && loadingCourse) {
+      setError('Course is still loading. Please wait a moment.');
+      return;
     }
+
+    if (isAttachMode && attachCourseId && !attachCourse) {
+      setError('Unable to load this course. Please retry or create a new one.');
+      return;
+    }
+
+    if (!attachCourseId && !imageFile) {
+      setFormError('title', { type: 'manual', message: '' }); // trigger form invalid state
+      setError('Course image is required (JPEG, PNG, or WebP, max 5MB).');
+      return;
+    }
+
+    const pendingVideos = sections.flatMap((section, sectionIdx) =>
+      section.videos
+        .filter((video) => video.file)
+        .map((video) => ({ ...video, sectionTitle: section.title || `Section ${sectionIdx + 1}` }))
+    );
+
+    if (pendingVideos.some((v) => !v.title.trim())) {
+      setError('Please add a title for each video you plan to upload.');
+      return;
+    }
+
+    setCreating(true);
+    setOverlay({
+      open: true,
+      text: pendingVideos.length
+        ? isAttachMode
+          ? 'Uploading videos...'
+          : 'Creating your course and uploading videos...'
+        : isAttachMode
+          ? 'Updating course...'
+          : 'Creating your course...',
+    });
 
     try {
-      setError(null);
-      setTitleWarning(false);
-      setIsUploading(true);
+      let courseIdToUse = attachCourseId;
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      if (!courseIdToUse) {
+        const courseRes = await fetch('/api/courses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: values.title.trim(),
+            description: values.description.trim(),
+            coverImage: null,
+            category: values.category,
+          }),
+        });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to get upload URL');
+        if (!courseRes.ok) {
+          const data = await courseRes.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to create course');
+        }
+
+        const course = await courseRes.json();
+        courseIdToUse = course.id;
+        setToast('course_created');
       }
 
-      const { uploadUrl, uploadId } = await response.json();
-      setUploadId(uploadId);
-      return uploadUrl;
+      if (imageFile && courseIdToUse) {
+        setOverlay({ open: true, text: isAttachMode ? 'Updating course image...' : 'Uploading course image...' });
+        await uploadCourseImage(courseIdToUse, imageFile);
+      }
+
+      if (pendingVideos.length && courseIdToUse) {
+        let partNumber = (attachCourse?.videoCount ?? 0) + 1;
+        for (let i = 0; i < pendingVideos.length; i++) {
+          const video = pendingVideos[i];
+          setOverlay({
+            open: true,
+            text: `Uploading videos... (${i + 1}/${pendingVideos.length})`,
+          });
+          await uploadVideo(video, courseIdToUse, video.sectionTitle, partNumber);
+          partNumber += 1;
+        }
+      }
+
+      setOverlay({ open: true, text: 'Taking you to your course...' });
+      if (courseIdToUse) {
+        setTimeout(() => router.push(`/course/${courseIdToUse}`), 800);
+      }
+    } catch (e) {
+      setOverlay({ open: false, text: '' });
+      setCreating(false);
+      setError(e instanceof Error ? e.message : 'Something went wrong while creating the course.');
+    }
+  });
+
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Image must be JPEG, PNG, or WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5MB.');
+      return;
+    }
+    setError(null);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    clearErrors();
+  };
+
+  const addSection = () => {
+    setSections((prev) => [
+      ...prev,
+      {
+        id: randomId(),
+        title: '',
+        description: '',
+        videos: [],
+      },
+    ]);
+    setToast('section_added');
+  };
+
+  const removeSection = (sectionId: string) => {
+    setSections((prev) => prev.filter((s) => s.id !== sectionId));
+  };
+
+  const updateSection = (sectionId: string, payload: Partial<SectionDraft>) => {
+    setSections((prev) =>
+      prev.map((section) => (section.id === sectionId ? { ...section, ...payload } : section))
+    );
+  };
+
+  const addVideo = (sectionId: string) => {
+    setSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              videos: [
+                ...section.videos,
+                {
+                  id: randomId(),
+                  title: '',
+                  description: '',
+                  status: 'idle',
+                  progress: 0,
+                },
+              ],
+            }
+          : section
+      )
+    );
+  };
+
+  const removeVideo = (sectionId: string, videoId: string) => {
+    setSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? { ...section, videos: section.videos.filter((video) => video.id !== videoId) }
+          : section
+      )
+    );
+  };
+
+  const updateVideo = (sectionId: string, videoId: string, payload: Partial<VideoDraft>) => {
+    setSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              videos: section.videos.map((video) =>
+                video.id === videoId ? { ...video, ...payload } : video
+              ),
+            }
+          : section
+      )
+    );
+  };
+
+  const handleVideoFile = async (sectionId: string, videoId: string, file?: File | null) => {
+    if (!file) return;
+    if (!['video/mp4', 'video/webm'].includes(file.type)) {
+      setError('Videos must be MP4 or WebM.');
+      return;
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      setError('Videos must be under 500MB.');
+      return;
+    }
+    setError(null);
+    const duration = await readVideoDuration(file);
+    updateVideo(sectionId, videoId, {
+      file,
+      size: file.size,
+      duration,
+    });
+  };
+
+  const uploadCourseImage = async (courseId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch(`/api/courses/${courseId}/image`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to upload course image.');
+    }
+    return res.json();
+  };
+
+  const sectionIdFor = (videoId: string) => {
+    const section = sections.find((s) => s.videos.some((v) => v.id === videoId));
+    return section?.id || '';
+  };
+
+  const uploadVideo = async (
+    video: VideoDraft & { sectionTitle?: string },
+    courseId: string,
+    sectionTitle?: string,
+    partNumber?: number
+  ) => {
+    if (!video.file) return;
+    const sectionId = sectionIdFor(video.id);
+    updateVideoState(video.id, 'uploading');
+
+    try {
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType: video.file.type }),
+      });
+      if (!uploadRes.ok) {
+        const data = await uploadRes.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to get upload URL');
+      }
+      const { uploadUrl, uploadId } = await uploadRes.json();
+
+      await uploadFileWithProgress(uploadUrl, video.file, (progress) => {
+        if (sectionId) {
+          updateVideo(sectionId, video.id, { progress });
+        }
+      });
+
+      await saveVideoToLibrary({
+        title: video.title || 'Untitled lesson',
+        description: video.description,
+        muxUploadId: uploadId,
+        courseId,
+        partNumber,
+        sectionTitle,
+        durationSeconds: video.duration ? Math.round(video.duration) : undefined,
+        fileSizeBytes: video.size,
+        fileFormat: video.file.type,
+      });
+
+      updateVideoState(video.id, 'uploaded');
+      setToast('video_uploaded');
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to create upload';
-      setError(message);
-      setIsUploading(false);
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      updateVideoState(video.id, 'error', message);
       throw err;
     }
   };
 
-  const handleSuccess = () => {
-    console.log('✅ Upload complete!');
-    setIsUploading(false);
-    setUploadComplete(true);
-    setUploadProgress(100);
-  };
-
-  const handleError = (error: any) => {
-    console.error('❌ Upload error:', error);
-    setError('Upload failed. Please try again.');
-    setIsUploading(false);
-    setUploadComplete(false);
-  };
-
-  // 1. PROGRESS BAR LOGIC - Verified correct
-  const handleProgress = (event: any) => {
-    const progress = event.detail?.progress || 0;
-    // Math.round() ensures we get whole numbers (0, 1, 2, ..., 100)
-    setUploadProgress(Math.round(progress)); 
-  };
-
-  // --- Database Save (Server Action Call) ---
-  const handlePublish = async () => {
-    if (!uploadId || !title || isSaving) {
-      if (!title) setError('A video title is required before publishing.');
-      if (!uploadId) setError('The video file has not been uploaded yet.');
-      return;
-    }
-    if (mode === "course" && !courseId.trim()) {
-      setError("Select or create a course before publishing.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const result = await saveVideoToLibrary({
-        title,
-        description,
-        muxUploadId: uploadId,
-        courseId: mode === "course" ? courseId?.trim() || undefined : undefined,
-        partNumber: partNumber ?? undefined,
-      });
-
-      if (result.success) {
-        // Assuming video watch page is '/watch/[id]' or homepage is '/'
-        // Redirecting to homepage for now based on your code:
-        router.push('/');
-      } else {
-        throw new Error('Server action failed to return success.');
-      }
-    } catch (e) {
-      console.error('Failed to save metadata:', e);
-      setError('Failed to save video metadata. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCreateCourse = async () => {
-    if (!newCourseTitle.trim()) {
-      setError("Course title is required");
-      return;
-    }
-    setCreatingCourse(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/courses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newCourseTitle, description: newCourseDescription, coverImage: newCourseCover }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to create course");
-      }
-      const created = await res.json();
-      setCourses((prev) => [created, ...prev]);
-      setCourseId(created.id);
-      setNewCourseTitle("");
-      setNewCourseDescription("");
-      setNewCourseCover("");
-      // Redirect to course page so user can see/manage course immediately
-      router.push(`/course/${created.id}`);
-    } catch (e) {
-      console.error("Failed to create course", e);
-      setError(e instanceof Error ? e.message : "Failed to create course");
-    } finally {
-      setCreatingCourse(false);
-    }
-  };
-
-  // Clear title warning when user starts typing
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(e.target.value);
-    if (titleWarning && e.target.value.trim()) {
-      setTitleWarning(false);
-      setError(null);
-    }
-  };
-
-  // --- Render Function ---
-  const isFormDisabled = isUploading || isSaving;
-  const canPublish =
-    uploadComplete &&
-    title &&
-    !isSaving &&
-    (mode === "video" || (mode === "course" && courseId.trim() && addLesson));
-  const isUploadDisabled =
-    isFormDisabled ||
-    !title.trim() ||
-    (mode === "course" && (!courseId.trim() || !addLesson));
-
-  const requireTitleMessage = !title.trim() ? "Please provide a video title to start uploading." : null;
-  const handleGuardedUploadClick = (e: React.MouseEvent) => {
-    if (isUploadDisabled) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!title.trim()) {
-        setTitleWarning(true);
-        setError("Please provide a video title before uploading.");
-      } else if (mode === "course" && !courseId.trim()) {
-        setError("Select or create a course before uploading.");
-      }
-    }
+  const updateVideoState = (videoId: string, status: VideoDraft['status'], errorText?: string) => {
+    setSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        videos: section.videos.map((video) =>
+          video.id === videoId ? { ...video, status, progress: status === 'uploaded' ? 100 : video.progress, error: errorText } : video
+        ),
+      }))
+    );
   };
 
   return (
-    // Max width set higher for desktop/tablet, centered
-    <div className="min-h-screen bg-gray-50 md:bg-white"> 
-      {/* Ensure the container width is reasonable on all screens */}
-      <div className="w-full max-w-4xl mx-auto min-h-screen bg-white flex flex-col shadow-xl md:shadow-none"> 
-        
-        {/* Header - Sticky */}
-        <div className="flex sticky top-0 z-50 bg-white justify-between items-center px-4 py-3 border-b border-gray-200">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-slate-500">Course builder</p>
+            <h1 className="text-3xl font-bold text-slate-900">Create your course</h1>
+            <p className="text-sm text-slate-600">
+              Start with course details. Add videos now or later - your choice.
+            </p>
+          </div>
           <button
             onClick={() => router.back()}
-            className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
-            title="Go Back"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-blue-600"
           >
-            <IconArrowLeft />
-          </button>
-
-          <span className="font-semibold text-base text-gray-900">
-            Upload Content
-          </span>
-
-          <button
-            onClick={handlePublish}
-            disabled={!canPublish}
-            className={`px-4 py-1.5 rounded text-sm font-medium transition-all ${
-              canPublish
-                ? 'text-white bg-blue-600 hover:bg-blue-700' // Changed to blue button for prominence
-                : 'text-gray-300 bg-gray-100 cursor-not-allowed' // Dimmed background when disabled
-            }`}
-          >
-            {isSaving ? 'Publishing...' : 'Publish'}
+            <ArrowLeft />
+            Back
           </button>
         </div>
 
-        {/* Main Form Content */}
-        {/* Added padding adjustments for mobile/tablet/desktop */}
-        <div className="flex-1 px-4 sm:px-6 py-6 space-y-8 overflow-y-auto"> 
-          
-        {/* Intro / guidance */}
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 space-y-1">
-            <p className="font-semibold">How to use this uploader</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>Standalone video: publishes a single video. You can attach it to a course later.</li>
-              <li>Course lesson: pick or create a course below, then upload each part (e.g., Part 1 to 7) in order.</li>
-              <li>After selecting/creating a course, copy its link to share with learners or teammates.</li>
-            </ul>
-          </div>
-
-          {/* Mode Tabs */}
-          <div className="flex items-center gap-3">
-            {[
-              { key: "video", label: "Standalone video" },
-              { key: "course", label: "Course lesson" },
-            ].map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setMode(item.key as "video" | "course")}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold border transition ${
-                  mode === item.key
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "border-gray-200 text-gray-700 dark:text-gray-200 hover:border-blue-400"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Hidden MuxUploader - Core logic handler */}
-          <MuxUploader
-            id={UPLOADER_ID}
-            endpoint={getUploadUrl}
-            onUploadStart={() => setIsUploading(true)}
-            onSuccess={handleSuccess}
-            onError={handleError}
-            onProgress={handleProgress}
-            style={{ display: 'none' }} 
-          />
-          
-          {/* Success Banner (Simplified) */}
-          {canPublish && !isSaving && (
-            <div className="bg-green-100 border-l-4 border-green-500 rounded p-4">
-              <p className="font-semibold text-green-800">Upload complete. Ready to publish.</p>
-            </div>
-          )}
-
-          {/* Error Display (Simplified) */}
-          {error && (
-            <div className="bg-red-100 border-l-4 border-red-500 rounded p-4">
-              <p className="font-semibold text-red-800">Error: {error}</p>
-            </div>
-          )}
-
-          {/* Lesson/Video Metadata Section */}
-          {(mode === "video" || (mode === "course" && addLesson)) && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-xl font-bold text-gray-900">{mode === "video" ? "Video Details" : "Lesson Details"}</h3>
-              {mode === "course" ? (
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={addLesson}
-                    onChange={(e) => setAddLesson(e.target.checked)}
-                    className="h-4 w-4"
-                    disabled={isFormDisabled}
-                  />
-                  Add first lesson now (optional)
-                </label>
-              ) : null}
-            </div>
-
-            {/* Title */}
-            <div className="space-y-2">
-              <label className="text-sm text-gray-700 font-medium flex items-center gap-1">
-                Video Title
-                <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={title}
-                onChange={handleTitleChange}
-                placeholder="Enter the title of your video"
-                className={`w-full px-4 py-2 text-base border rounded-lg focus:outline-none focus:ring-2 transition-all ${
-                  titleWarning
-                    ? 'border-red-400 focus:ring-red-500 bg-red-50'
-                    : title
-                    ? 'border-green-400 focus:ring-green-500'
-                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-                }`}
-                disabled={isFormDisabled}
-              />
-              {titleWarning && (
-                <p className="text-xs text-red-600 flex items-center gap-1">
-                  <span>⚠️</span> Title is required before uploading
+        {isAttachMode && (
+          <div className="flex items-start gap-2 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+            <CheckCircle />
+            <div className="text-sm">
+              <p className="font-semibold">
+                Adding videos to {attachCourse?.title || 'existing course'}
+              </p>
+              {attachCourse?.videoCount !== undefined && (
+                <p className="text-xs">
+                  {attachCourse.videoCount} existing video{attachCourse.videoCount === 1 ? '' : 's'}
                 </p>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Description */}
-            <div className="space-y-2">
-              <label className="text-sm text-gray-700 font-medium">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add a detailed description for your video"
-                className="w-full min-h-[120px] px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                disabled={isFormDisabled}
-              />
+        <form onSubmit={onSubmit} className="space-y-6">
+          {/* Course creation */}
+          <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                <IconBook />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Course details</h2>
+                <p className="text-sm text-slate-600">Required to create your course.</p>
+              </div>
+            </div>
+            {isAttachMode && (
+              <p className="text-xs text-slate-500">
+                Viewing details from your existing course. Changes here are not saved in attach mode.
+              </p>
+            )}
+
+            <div className="grid gap-4">
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
+                  Course title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  {...register('title', {
+                    required: 'Course title is required',
+                    minLength: { value: 5, message: 'Minimum 5 characters' },
+                  })}
+                  placeholder="Enter course title"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.title && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle /> {errors.title.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  {...register('description', {
+                    required: 'Course description is required',
+                    minLength: { value: 20, message: 'Minimum 20 characters' },
+                  })}
+                  placeholder="Provide a detailed description of your course"
+                  rows={4}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.description && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle /> {errors.description.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
+                  Category <span className="text-red-500">*</span>
+                </label>
+                <select
+                  {...register('category', { required: 'Select a category' })}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Choose a category
+                  </option>
+                  {categoryOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                {errors.category && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle /> {errors.category.message}</p>}
+              </div>
+            </div>
+          </section>
+
+          {/* Image upload */}
+          <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <IconImage />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Course image</h2>
+                <p className="text-sm text-slate-600">Upload course thumbnail (recommended: 1280x720px).</p>
+              </div>
             </div>
 
-          {/* Course association (only when course mode) */}
-          {mode === "course" && (
-            <div className="space-y-2">
-              <label className="text-sm text-gray-700 font-medium">
-                Course (required for lessons)
-              </label>
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <select
-                      value={courseId}
-                      onChange={(e) => setCourseId(e.target.value)}
-                      className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={isFormDisabled || loadingCourses}
-                    >
-                      <option value="">Select a course</option>
-                      {courses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      value={partNumber ?? ''}
-                      onChange={(e) => setPartNumber(e.target.value ? Number(e.target.value) : undefined)}
-                      placeholder="Part number"
-                      className="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={isFormDisabled}
-                    />
-                    <div className="flex items-center text-sm text-gray-500">
-                      {loadingCourses ? "Loading your courses..." : "Select a course or create a new one below."}
-                    </div>
+            <div className="grid md:grid-cols-[240px_1fr] gap-4">
+              <div className="aspect-video rounded-xl border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
+                {imagePreview ? (
+                  <img src={imagePreview} alt="Course cover" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center text-slate-500 text-sm">
+                    <UploadCloud />
+                    <p className="mt-2">No image selected</p>
                   </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
+                  Upload image {imageRequired && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleImageChange}
+                  className="w-full text-sm file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:font-semibold file:cursor-pointer border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500">
+                  {imageRequired
+                    ? 'Required for new courses. Max size 5MB. JPEG, PNG, or WebP only.'
+                    : 'Optional update. Max size 5MB. JPEG, PNG, or WebP only.'}
+                </p>
+              </div>
+            </div>
+          </section>
 
-                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2 bg-gray-50">
-                  <div className="text-sm font-semibold text-gray-800">Create a new course</div>
-                  <input
-                    value={newCourseTitle}
-                    onChange={(e) => setNewCourseTitle(e.target.value)}
-                    placeholder="Course title"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      disabled={isFormDisabled || creatingCourse}
-                    />
-                    <textarea
-                      value={newCourseDescription}
-                      onChange={(e) => setNewCourseDescription(e.target.value)}
-                      placeholder="Short description (optional)"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                    rows={2}
-                    disabled={isFormDisabled || creatingCourse}
-                  />
-                  <input
-                    value={newCourseCover}
-                    onChange={(e) => setNewCourseCover(e.target.value)}
-                    placeholder="Cover image URL (optional)"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={isFormDisabled || creatingCourse}
-                  />
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleCreateCourse}
-                        disabled={creatingCourse || isFormDisabled}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                          creatingCourse
-                            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
-                      >
-                        {creatingCourse ? "Creating..." : "Create & attach"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-gray-500">
-                    Create a course here to turn this upload into the first lesson, or pick an existing course to add more lessons.
+          {/* Video upload - collapsible */}
+          <section className="bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <button
+              type="button"
+              onClick={() => setVideoAccordionOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between px-6 py-4"
+            >
+              <div className="flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <PlusCircle />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-slate-900">
+                    Add videos to course (Optional - can be added later)
                   </p>
+                  <p className="text-sm text-slate-600">
+                    Create sections and upload multiple videos per section.
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className={`transition-transform ${videoAccordionOpen ? 'rotate-90' : ''}`} />
+            </button>
 
-                  {courseId ? (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-2">
-                      <div className="text-sm text-blue-800 break-all">
-                        <div className="font-semibold">Course link</div>
-                        <Link href={`/course/${courseId}`} className="text-xs text-blue-700 underline">
-                          {`/course/${courseId}`}
-                        </Link>
+            {videoAccordionOpen && (
+              <div className="border-t border-slate-200 p-6 space-y-4">
+                {sections.length === 0 && (
+                  <div className="border border-dashed border-slate-200 rounded-xl p-4 text-sm text-slate-600 bg-slate-50">
+                    No sections yet. Add a section to begin.
+                  </div>
+                )}
+
+                {sections.map((section, sectionIdx) => (
+                  <div key={section.id} className="border border-slate-200 rounded-xl p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2 flex-1">
+                        <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
+                          Section title <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          value={section.title}
+                          onChange={(e) => updateSection(section.id, { title: e.target.value })}
+                          placeholder="e.g., Introduction, HTML Fundamentals"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <textarea
+                          value={section.description}
+                          onChange={(e) => updateSection(section.id, { description: e.target.value })}
+                          placeholder="Brief description of this section"
+                          rows={2}
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          const url = `${window.location.origin}/course/${courseId}`;
-                          navigator.clipboard.writeText(url);
-                          setError(null);
-                          setMessage(`Course link copied: ${url}`);
-                        }}
-                        className="px-3 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 transition"
+                        onClick={() => removeSection(section.id)}
+                        className="text-slate-500 hover:text-red-600"
+                        title="Remove section"
                       >
-                        Copy link
+                        <Trash />
                       </button>
                     </div>
-                  ) : null}
 
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      id="add-lesson"
-                      checked={addLesson}
-                      onChange={(e) => setAddLesson(e.target.checked)}
-                      className="h-4 w-4"
-                      disabled={isFormDisabled}
-                    />
-                    <label htmlFor="add-lesson">Add a lesson now (optional)</label>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          )}
-          {/* Video Upload Section */}
-          {(mode === "video" || (mode === "course" && addLesson)) && (
-          <div className="space-y-4 py-2 border-t pt-8">
-            <h3 className="text-xl font-bold text-gray-900">
-              Video File
-            </h3>
+                    <div className="space-y-3">
+                      {section.videos.map((video) => (
+                        <div key={video.id} className="border border-slate-200 rounded-lg p-3 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 space-y-2">
+                              <input
+                                value={video.title}
+                                onChange={(e) =>
+                                  updateVideo(section.id, video.id, { title: e.target.value })
+                                }
+                                placeholder="e.g., How to set up IDE"
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              <textarea
+                                value={video.description}
+                                onChange={(e) =>
+                                  updateVideo(section.id, video.id, { description: e.target.value })
+                                }
+                                placeholder="Brief description of this video"
+                                rows={2}
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
 
-            {/* Uploading Progress */}
-            {isUploading && !uploadComplete && (
-              <div className="p-5 bg-blue-50 rounded-lg border-2 border-blue-400 space-y-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
-                      <IconUpload className="text-blue-600 w-5 h-5" />
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                <label className="flex-1 flex items-center gap-3 text-sm text-slate-700">
+                                  <span className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-50 text-blue-600">
+                                    <UploadCloud />
+                                  </span>
+                                  <input
+                                    type="file"
+                                    accept="video/mp4,video/webm"
+                                    onChange={(e) =>
+                                      handleVideoFile(section.id, video.id, e.target.files?.[0])
+                                    }
+                                    className="w-full text-xs"
+                                  />
+                                </label>
+                                <div className="text-xs text-slate-500 flex items-center gap-2">
+                                  <PlayCircle />
+                                  <span>{formatDurationLabel(video.duration)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeVideo(section.id, video.id)}
+                              className="text-slate-400 hover:text-red-600"
+                              title="Remove video"
+                            >
+                              <Trash />
+                            </button>
+                          </div>
+
+                          {video.status !== 'idle' && (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                                <span>
+                                  {video.status === 'uploading'
+                                    ? 'Uploading...'
+                                    : video.status === 'uploaded'
+                                    ? 'Uploaded'
+                                    : 'Error'}
+                                </span>
+                                <span className="tabular-nums">{Math.round(video.progress)}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    video.status === 'error'
+                                      ? 'bg-red-500'
+                                      : 'bg-blue-600'
+                                  }`}
+                                  style={{ width: `${Math.round(video.progress)}%` }}
+                                />
+                              </div>
+                              {video.error && (
+                                <p className="text-xs text-red-600 flex items-center gap-1">
+                                  <AlertCircle /> {video.error}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => addVideo(section.id)}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800"
+                      >
+                        <PlusCircle />
+                        Add Video to Section
+                      </button>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-blue-900">
-                        Uploading file...
-                      </p>
-                      <p className="text-xs text-blue-700 mt-0.5">
-                        Please wait.
-                      </p>
-                    </div>
                   </div>
-                  <span className="text-3xl font-extrabold text-blue-600 tabular-nums w-16 text-right">
-                    {uploadProgress}%
-                  </span>
-                </div>
-                <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
+                ))}
 
-            {/* Upload Complete */}
-            {uploadComplete && (
-              <div className="p-5 bg-green-50 rounded-lg border-2 border-green-500">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center flex-shrink-0">
-                      <IconCheckCircle className="text-green-600 w-5 h-5" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-green-900">
-                        Upload Complete!
-                      </p>
-                      <p className="text-xs text-green-700 mt-0.5">
-                        Your video is processing and ready to publish.
-                      </p>
-                    </div>
-                  </div>
-                  <IconCheckCircle className="text-green-600" size={28} />
-                </div>
-              </div>
-            )}
-
-            {/* Upload Area - When not uploading or complete */}
-            {!isUploading && !uploadComplete && (
-              <MuxUploaderDrop
-                mux-uploader={UPLOADER_ID}
-                overlay-text="Drop your video here to upload"
-                className={`relative border-2 border-dashed rounded-xl p-10 transition-all duration-200 ${
-                  isUploadDisabled
-                    ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50 pointer-events-none'
-                    : 'border-blue-400 bg-blue-50 hover:border-blue-500 hover:bg-blue-100'
-                }`}
-              >
-                {/* Custom Heading Slot */}
-                <div slot="heading" className="flex flex-col items-center justify-center gap-4">
-                  
-                  {/* Upload Icon */}
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center bg-blue-200">
-                    <IconUploadLarge className="w-8 h-8 text-blue-600" />
-                  </div>
-
-                  {/* Text Content */}
-                  <div className="text-center space-y-1">
-                    <p className="text-base font-semibold text-gray-900">
-                      Drag and drop your video file here
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      (MP4, MOV, WebM)
-                    </p>
-                  </div>
-                </div>
-
-                {/* Custom Separator Slot - Using a visible line */}
-                <div slot="separator" className="my-4 flex items-center">
-                    <span className="flex-grow border-t border-gray-300"></span>
-                    <span className="flex-shrink mx-4 text-gray-400 text-xs font-medium">OR</span>
-                    <span className="flex-grow border-t border-gray-300"></span>
-                </div>
-
-                {/* Custom File Select Button (Default Slot) */}
-                <MuxUploaderFileSelect
-                  mux-uploader={UPLOADER_ID}
+                <button
+                  type="button"
+                  onClick={addSection}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100"
                 >
-                  <button
-                    type="button"
-                    className={`mt-2 px-6 py-2.5 rounded-lg text-base font-semibold transition-all flex items-center justify-center mx-auto gap-2 shadow-md ${
-                      isUploadDisabled
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                  >
-                    <IconUploadSmall className="w-5 h-5" />
-                    Select Video File
-                  </button>
-                </MuxUploaderFileSelect>
-              </MuxUploaderDrop>
-            )}
-
-            {/* Saving State */}
-            {isSaving && (
-              <div className="p-5 bg-purple-50 rounded-lg border-2 border-purple-400">
-                <div className="flex items-center gap-3">
-                  <div className="animate-spin w-6 h-6 flex items-center justify-center">
-                    <IconSpinner className="text-purple-600 w-full h-full" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-purple-900">
-                      Publishing Your Video...
-                    </p>
-                    <p className="text-xs text-purple-700 mt-1">
-                      Please wait while we finalize and save your content.
-                    </p>
-                  </div>
-                </div>
+                  <PlusCircle />
+                  Add New Section
+                </button>
               </div>
             )}
-          </div>
+          </section>
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertCircle />
+              <span>{error}</span>
+            </div>
           )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <div className="text-sm text-slate-600">
+              {isAttachMode
+                ? 'Upload new sections and videos to this course whenever you are ready.'
+                : 'You can create the course without videos and add them later.'}
+            </div>
+            <button
+              type="submit"
+              disabled={!formReady || creating || loadingCourse || (!imageFile && !isAttachMode)}
+              className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-white font-semibold transition ${
+                !formReady || creating || loadingCourse || (!imageFile && !isAttachMode)
+                  ? 'bg-slate-300 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {creating
+                ? 'Working...'
+                : isAttachMode
+                  ? hasQueuedVideos
+                    ? 'Upload to course'
+                    : 'Update course'
+                  : hasQueuedVideos
+                    ? 'Create & upload'
+                    : 'Create course'}
+              <ArrowRight />
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {overlay.open && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center gap-4 z-50 px-4">
+          <Spinner />
+          <p className="text-white text-lg font-semibold text-center">{overlay.text}</p>
+        </div>
+      )}
+
+      {toast && <SuccessToast kind={toast} />}
+    </div>
+  );
+}
+
+function SuccessToast({ kind }: { kind: ToastKind }) {
+  const messages: Record<ToastKind, string> = {
+    course_created: 'Course created successfully!',
+    video_uploaded: 'Video uploaded successfully!',
+    section_added: 'Section added successfully!',
+  };
+
+  return (
+    <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-4">
+      <div className="flex items-center gap-3 rounded-lg bg-emerald-500 text-white px-4 py-3 shadow-lg">
+        <CheckCircle />
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold">{messages[kind]}</span>
         </div>
       </div>
     </div>
   );
 }
 
-// Icon Components (Included for completeness)
-const IconArrowLeft = () => (
-  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" ><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+async function uploadFileWithProgress(url: string, file: File, onProgress: (progress: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const progress = Math.round((event.loaded / event.total) * 100);
+        onProgress(progress);
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve();
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(file);
+  });
+}
+
+function formatDurationLabel(seconds?: number | null) {
+  if (seconds === null || seconds === undefined) return '00:00';
+  const total = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(total / 60)
+    .toString()
+    .padStart(2, '0');
+  const s = (total % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function randomId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function readVideoDuration(file: File) {
+  return new Promise<number | null>((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(video.duration || null);
+    };
+    video.onerror = () => resolve(null);
+    video.src = URL.createObjectURL(file);
+  });
+}
+
+const ArrowLeft = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
 );
 
-const IconUpload = ({ className }: { className?: string }) => (
-  <svg className={className} width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+const ArrowRight = ({ className }: { className?: string }) => (
+  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9 5l7 7-7 7" />
+  </svg>
 );
 
-const IconUploadLarge = ({ className }: { className?: string }) => (
-  <svg className={className} width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+const UploadCloud = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M16 16l-4-4-4 4" />
+    <path d="M12 12v9" />
+    <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 104 16.3" />
+  </svg>
 );
 
-const IconUploadSmall = ({ className }: { className?: string }) => (
-  <svg className={className} width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+const PlusCircle = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 8v8" />
+    <path d="M8 12h8" />
+  </svg>
 );
 
-const IconCheckCircle = ({ className, size = 20, }: { className?: string; size?: number; }) => (
-  <svg className={className} width={size} height={size} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" ><circle cx="12" cy="12" r="10" /><path d="M9 12l2 2 4-4" /></svg>
+const Trash = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+    <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+  </svg>
 );
 
-const IconSpinner = ({ className }: { className?: string }) => (
-  <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" >
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+const CheckCircle = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+
+const Spinner = () => (
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="#3b82f6"
+      strokeWidth="4"
+      strokeDasharray="32"
+      strokeLinecap="round"
+    >
+      <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
+    </circle>
+  </svg>
+);
+
+const IconImage = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <path d="M21 15l-5-5L5 21" />
+  </svg>
+);
+
+const IconBook = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M4 19.5a2.5 2.5 0 012.5-2.5H20" />
+    <path d="M4 4h16v15H6.5A2.5 2.5 0 004 21.5z" />
+  </svg>
+);
+
+const PlayCircle = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M10 8l6 4-6 4z" />
+  </svg>
+);
+
+const AlertCircle = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 8v4" />
+    <path d="M12 16h.01" />
   </svg>
 );

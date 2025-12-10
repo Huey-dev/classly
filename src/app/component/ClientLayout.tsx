@@ -12,15 +12,18 @@ function NavLink({
   icon,
   label,
   active = false,
+  onClick,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <a
       href={href}
+      onClick={onClick}
       className={`flex items-center gap-4 px-4 py-2 rounded-lg transition-colors ${
         active
           ? "bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400 font-medium"
@@ -50,7 +53,6 @@ export default function ClientLayout({
       {/* Header - Fixed Navigation Bar */}
       <header className="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <Header
-          openSidebar={() => setSidebarOpen(true)}
           theme={theme || "light"}
         />
       </header>
@@ -60,41 +62,45 @@ export default function ClientLayout({
         {/* Sidebar */}
         <aside
           className={`fixed md:relative z-40 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${
-            sidebarOpen ? "w-64" : "w-0 md:w-56"
+            sidebarOpen ? "translate-x-0 w-64" : "-translate-x-full w-64 md:w-56 md:translate-x-0"
           } overflow-y-auto flex-shrink-0`}
         >
           <nav className="p-4 space-y-2 pt-4">
-            <NavLink href="/" icon="" label="Home" active />
+            <NavLink href="/" icon="" label="Home" active onClick={() => setSidebarOpen(false)} />
 
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             <a
               href="/student"
+              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Student 
             </a>
             <a
               href="/signup"
+              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign up
             </a>
             <a
               href="/signin"
+              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign in
             </a>
             <a
               href="/signout"
+              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign out
             </a>
             {/* profile */}
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
-            <NavLink href="/me" icon="" label="Profile" />
+            <NavLink href="/me" icon="" label="Profile" onClick={() => setSidebarOpen(false)} />
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             {/* Dark Mode Toggle */}
@@ -111,10 +117,12 @@ export default function ClientLayout({
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-          <ExploreTab />
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-3 sm:px-4 md:px-0">
+            <ExploreTab />
+          </div>
           {/* Video sections (continue watching + recently added) */}
-          {children}
+          <div className="px-3 sm:px-4 md:px-0 pb-6">{children}</div>
         </main>
       </div>
 
