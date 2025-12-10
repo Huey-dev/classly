@@ -42,7 +42,6 @@ export default function ClientLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   // Avoid hydration mismatch by waiting for client mount before rendering theme-dependent UI
@@ -61,46 +60,41 @@ export default function ClientLayout({
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`fixed md:relative z-40 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${
-            sidebarOpen ? "translate-x-0 w-64" : "-translate-x-full w-64 md:w-56 md:translate-x-0"
-          } overflow-y-auto flex-shrink-0`}
+          className="hidden md:block z-40 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 w-56"
+          aria-label="Primary navigation"
         >
           <nav className="p-4 space-y-2 pt-4">
-            <NavLink href="/" icon="" label="Home" active onClick={() => setSidebarOpen(false)} />
+            <NavLink href="/" icon="" label="Home" active />
 
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             <a
               href="/student"
-              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Student 
             </a>
             <a
               href="/signup"
-              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign up
             </a>
             <a
               href="/signin"
-              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign in
             </a>
             <a
               href="/signout"
-              onClick={() => setSidebarOpen(false)}
               className="block w-full px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               Sign out
             </a>
             {/* profile */}
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
-            <NavLink href="/me" icon="" label="Profile" onClick={() => setSidebarOpen(false)} />
+            <NavLink href="/me" icon="" label="Profile" />
             <hr className="my-4 border-gray-200 dark:border-gray-700" />
 
             {/* Dark Mode Toggle */}
@@ -127,12 +121,6 @@ export default function ClientLayout({
       </div>
 
       {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 md:hidden z-30"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-    </div>
+      </div>
   );
 }

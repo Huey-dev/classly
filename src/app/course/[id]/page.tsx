@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { type ReactNode } from 'react';
 import { prisma } from '../../../../lib/prisma';
 import { getUserFromRequest } from '../../../../lib/auth/getUserFromRequest';
+import { EnrollButton } from './EnrollButton';
 
 type Section = {
   id: string;
@@ -71,11 +72,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
     course.updatedAt
   );
   const rating = course.averageRating ?? 0;
+  const isFree = !course.isPaid || !course.priceAda || Number(course.priceAda) <= 0;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-10">
-        <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-center bg-white border border-slate-200 rounded-3xl shadow-sm p-6 sm:p-8">
+        <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start bg-white border border-slate-200 rounded-3xl shadow-sm p-6 sm:p-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 uppercase tracking-wide">
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-700">
@@ -93,8 +95,8 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <StatTile label="Enrolled" value={course._count.enrollments.toLocaleString()} icon={<IconUsers />} />
-              <StatTile label="Rating" value={rating ? rating.toFixed(1) : 'New'} icon={<IconStar />} />
+              <StatTile label="Enrolled" value={`${course._count.enrollments.toLocaleString()} students`} icon={<IconUsers />} />
+              <StatTile label="Rating" value={rating ? `${rating.toFixed(1)}/5` : 'New'} icon={<IconStar />} />
               <StatTile label="Duration" value={durationLabel} icon={<IconClock />} />
             </div>
 
@@ -127,33 +129,50 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
               >
                 <IconArrowRight /> View course content
               </a>
-              {course.userId === user?.id && (
-                <Link
-                  href={`/upload?courseId=${course.id}`}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-800 font-semibold hover:border-blue-400"
-                >
-                  <IconUpload /> Add content
-                </Link>
-              )}
               {enrolled && <span className="text-sm text-emerald-600 font-semibold">Enrolled</span>}
+              {!enrolled && !isFree && <span className="text-sm text-slate-600">Protected by escrow</span>}
             </div>
           </div>
 
-          <div className="relative w-full aspect-video bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
-            {course.coverImage ? (
-              <Image
-                src={course.coverImage}
-                alt={course.title}
-                fill
-                sizes="(min-width: 1024px) 40vw, 100vw"
-                className="object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500">
-                <IconImage />
-                <p className="text-sm mt-2">No cover image yet</p>
+          <div className="space-y-4">
+            <div className="relative w-full aspect-video bg-slate-100 rounded-2xl overflow-hidden border border-slate-200">
+              {course.coverImage ? (
+                <Image
+                  src={course.coverImage}
+                  alt={course.title}
+                  fill
+                  sizes="(min-width: 1024px) 40vw, 100vw"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500">
+                  <IconImage />
+                  <p className="text-sm mt-2">No cover image yet</p>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky top-24 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold text-slate-900">{isFree ? 'FREE' : `${Number(course.priceAda ?? 0)} ADA`}</div>
+                {!isFree && <div className="text-xs text-slate-500">~$ {(Number(course.priceAda ?? 0) * 0.48).toFixed(2)}</div>}
               </div>
-            )}
+              <div className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700">
+                <IconShield /> Protected by Escrow
+              </div>
+              <EnrollButton
+                courseId={course.id}
+                enrolled={enrolled}
+                isOwner={course.userId === user?.id}
+                priceAda={course.priceAda as number | null}
+                userPresent={!!user}
+              />
+              <div className="space-y-1 text-sm text-slate-700">
+                <div className="flex items-center gap-2"><IconCheck /> Lifetime access</div>
+                <div className="flex items-center gap-2"><IconCheck /> Certificate on completion</div>
+                <div className="flex items-center gap-2"><IconCheck /> Access on mobile and desktop</div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -177,7 +196,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
           ) : (
             <div className="space-y-3">
               {sections.map((section) => (
-                <details key={section.id} className="group bg-white border border-slate-200 rounded-2xl overflow-hidden" open>
+                <details key={section.id} className="group bg-white border border-slate-200 rounded-2xl overflow-hidden">
                   <summary className="flex items-center justify-between px-4 sm:px-6 py-4 cursor-pointer select-none">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -185,7 +204,10 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                       </div>
                       <div>
                         <p className="font-semibold text-slate-900">{section.title}</p>
-                        <p className="text-xs text-slate-500">{section.videos.length} video{section.videos.length === 1 ? '' : 's'}</p>
+                        <p className="text-xs text-slate-500">
+                          {section.videos.length} video{section.videos.length === 1 ? '' : 's'}
+                          {section.videos[0] ? ` • Next: ${section.videos[0].title}` : ''}
+                        </p>
                       </div>
                     </div>
                     <IconChevron />
@@ -337,5 +359,18 @@ const IconImage = () => (
     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
     <circle cx="8.5" cy="8.5" r="1.5" />
     <path d="M21 15l-5-5L5 21" />
+  </svg>
+);
+
+const IconShield = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+
+const IconCheck = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M20 6L9 17l-5-5" />
   </svg>
 );

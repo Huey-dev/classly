@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { saveVideoToLibrary } from '../../../lib/actions';
@@ -21,6 +21,8 @@ type VideoDraft = {
   status: 'idle' | 'uploading' | 'uploaded' | 'error';
   progress: number;
   error?: string;
+  previewUrl?: string;
+  format?: string;
 };
 
 type SectionDraft = {
@@ -30,7 +32,7 @@ type SectionDraft = {
   videos: VideoDraft[];
 };
 
-type ToastKind = 'course_created' | 'video_uploaded' | 'section_added';
+type ToastKind = 'course_created' | 'video_uploaded' | 'section_added' | 'course_updated';
 
 type ExistingCourse = {
   id: string;
@@ -65,6 +67,12 @@ export default function UploadClient() {
   const [toast, setToast] = useState<ToastKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [savingDraft, setSavingDraft] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [baseCourse, setBaseCourse] = useState<ExistingCourse | null>(null);
+  const uploadCancels = useRef<Record<string, () => void>>({});
+  const [savingCourse, setSavingCourse] = useState(false);
 
   const {
     register,
@@ -73,6 +81,7 @@ export default function UploadClient() {
     setError: setFormError,
     clearErrors,
     reset,
+    watch,
   } = useForm<CourseForm>({
     mode: 'onChange',
     defaultValues: {
@@ -82,12 +91,26 @@ export default function UploadClient() {
     },
   });
 
+  const watchedForm = watch();
   const hasQueuedVideos = useMemo(
     () => sections.some((section) => section.videos.some((video) => video.file)),
     [sections]
   );
   const imageRequired = !isAttachMode;
   const formReady = isAttachMode ? true : isValid;
+  const draftKey = useMemo(
+    () => `classly_draft_course_${attachCourseId || 'new'}`,
+    [attachCourseId]
+  );
+  const hasFormChanges = useMemo(() => {
+    if (!isAttachMode || !baseCourse) return false;
+    return (
+      (watchedForm.title || '') !== (baseCourse.title || '') ||
+      (watchedForm.description || '') !== (baseCourse.description || '') ||
+      (watchedForm.category || '') !== (baseCourse.language || '') ||
+      (!!imageFile || (!!imagePreview && imagePreview !== baseCourse.coverImage))
+    );
+  }, [isAttachMode, baseCourse, watchedForm.title, watchedForm.description, watchedForm.category, imageFile, imagePreview]);
 
   useEffect(() => {
     if (!toast) return;
@@ -109,6 +132,14 @@ export default function UploadClient() {
         const data = await res.json();
         if (!active) return;
         setAttachCourse({
+          id: data.id,
+          title: data.title,
+          description: data.description ?? null,
+          language: data.language ?? null,
+          coverImage: data.coverImage ?? null,
+          videoCount: data.videoCount ?? 0,
+        });
+        setBaseCourse({
           id: data.id,
           title: data.title,
           description: data.description ?? null,
@@ -140,6 +171,74 @@ export default function UploadClient() {
       setVideoAccordionOpen(true);
     }
   }, [attachCourseId]);
+
+  // Restore draft on mount
+  useEffect(() => {
+    if (draftLoaded) return;
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.form) {
+          reset({
+            title: data.form.title || '',
+            description: data.form.description || '',
+            category: data.form.category || '',
+          });
+        }
+        if (Array.isArray(data.sections)) {
+          setSections(data.sections);
+        }
+        if (data.imagePreview) {
+          setImagePreview(data.imagePreview);
+        }
+        setDraftLoaded(true);
+      } catch {
+        // ignore corrupted draft
+      }
+    } else {
+      setDraftLoaded(true);
+    }
+  }, [draftKey, reset, draftLoaded]);
+
+  // Autosave draft
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const handle = setTimeout(() => {
+      try {
+        setSavingDraft('saving');
+        const payload = {
+          form: {
+            title: watchedForm.title || '',
+            description: watchedForm.description || '',
+            category: watchedForm.category || '',
+          },
+          sections,
+          imagePreview,
+          ts: Date.now(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(payload));
+        setSavingDraft('saved');
+        setLastSavedAt(Date.now());
+      } catch {
+        setSavingDraft('error');
+      }
+    }, 1200);
+    return () => clearTimeout(handle);
+  }, [sections, imagePreview, draftKey, draftLoaded, watchedForm.title, watchedForm.description, watchedForm.category]);
+
+  // Warn on unload when unsaved changes in edit mode
+  useEffect(() => {
+    if (!isAttachMode) return;
+    const beforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasFormChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [hasFormChanges, isAttachMode]);
 
   const onSubmit = handleSubmit(async (values) => {
     setError(null);
@@ -237,6 +336,40 @@ export default function UploadClient() {
     }
   });
 
+  const handleSaveCourseDetails = async () => {
+    if (!attachCourseId) return;
+    setSavingCourse(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/courses/${attachCourseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: watchedForm.title,
+          description: watchedForm.description,
+          coverImage: imagePreview,
+          priceAda: undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update course');
+      }
+      setBaseCourse({
+        ...(baseCourse || { id: attachCourseId, title: '', description: '' }),
+        title: watchedForm.title,
+        description: watchedForm.description,
+        coverImage: imagePreview || null,
+        language: watchedForm.category,
+      });
+      setToast('course_updated');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update course.');
+    } finally {
+      setSavingCourse(false);
+    }
+  };
+
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -326,12 +459,13 @@ export default function UploadClient() {
 
   const handleVideoFile = async (sectionId: string, videoId: string, file?: File | null) => {
     if (!file) return;
-    if (!['video/mp4', 'video/webm'].includes(file.type)) {
-      setError('Videos must be MP4 or WebM.');
+    const allowed = ['video/mp4', 'video/webm', 'video/quicktime'];
+    if (!allowed.includes(file.type)) {
+      setError('Only MP4, WebM, or MOV files are supported.');
       return;
     }
-    if (file.size > 500 * 1024 * 1024) {
-      setError('Videos must be under 500MB.');
+    if (file.size > 200 * 1024 * 1024) {
+      setError(`Videos must be under 200MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(1)}MB.`);
       return;
     }
     setError(null);
@@ -340,6 +474,8 @@ export default function UploadClient() {
       file,
       size: file.size,
       duration,
+      format: file.type,
+      previewUrl: URL.createObjectURL(file),
     });
   };
 
@@ -384,11 +520,21 @@ export default function UploadClient() {
       }
       const { uploadUrl, uploadId } = await uploadRes.json();
 
-      await uploadFileWithProgress(uploadUrl, video.file, (progress) => {
-        if (sectionId) {
-          updateVideo(sectionId, video.id, { progress });
+      await uploadFileWithProgress(
+        uploadUrl,
+        video.file,
+        (progress) => {
+          if (sectionId) {
+            updateVideo(sectionId, video.id, { progress });
+          }
+        },
+        (cancelFn) => {
+          uploadCancels.current[video.id] = () => {
+            cancelFn();
+            updateVideo(sectionId, video.id, { status: 'error', error: 'Upload canceled', progress: 0 });
+          };
         }
-      });
+      );
 
       await saveVideoToLibrary({
         title: video.title || 'Untitled lesson',
@@ -404,6 +550,7 @@ export default function UploadClient() {
 
       updateVideoState(video.id, 'uploaded');
       setToast('video_uploaded');
+      delete uploadCancels.current[video.id];
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       updateVideoState(video.id, 'error', message);
@@ -425,21 +572,44 @@ export default function UploadClient() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-slate-500">Course builder</p>
-            <h1 className="text-3xl font-bold text-slate-900">Create your course</h1>
+            <h1 className="text-3xl font-bold text-slate-900">
+              {isAttachMode ? `Edit course${attachCourse?.title ? `: ${attachCourse.title}` : ''}` : 'Create your course'}
+            </h1>
             <p className="text-sm text-slate-600">
               Start with course details. Add videos now or later - your choice.
             </p>
           </div>
-          <button
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-blue-600"
-          >
-            <ArrowLeft />
-            Back
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-slate-500">
+              {savingDraft === 'saving' && '💾 Saving draft...'}
+              {savingDraft === 'saved' && lastSavedAt && `✓ Draft saved • ${new Date(lastSavedAt).toLocaleTimeString()}`}
+              {savingDraft === 'error' && '⚠️ Could not save draft'}
+            </div>
+            {isAttachMode && (
+              <button
+                type="button"
+                onClick={handleSaveCourseDetails}
+                disabled={!hasFormChanges || savingCourse}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+                  !hasFormChanges || savingCourse
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {savingCourse ? 'Saving...' : 'Save changes'}
+              </button>
+            )}
+            <button
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-blue-600"
+            >
+              <ArrowLeft />
+              Back
+            </button>
+          </div>
         </div>
 
         {isAttachMode && (
@@ -677,6 +847,9 @@ export default function UploadClient() {
                                   <span>{formatDurationLabel(video.duration)}</span>
                                 </div>
                               </div>
+                              <p className="text-[11px] text-slate-500">
+                                Max 200MB • MP4, WebM, or MOV • Ideal duration 2-20 minutes
+                              </p>
                             </div>
 
                             <button
@@ -709,12 +882,38 @@ export default function UploadClient() {
                                       : 'bg-blue-600'
                                   }`}
                                   style={{ width: `${Math.round(video.progress)}%` }}
-                                />
+                               />
                               </div>
+                              {video.status === 'uploading' && uploadCancels.current[video.id] && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    uploadCancels.current[video.id]?.();
+                                  }}
+                                  className="text-xs text-red-600 underline"
+                                >
+                                  Cancel upload
+                                </button>
+                              )}
                               {video.error && (
                                 <p className="text-xs text-red-600 flex items-center gap-1">
                                   <AlertCircle /> {video.error}
                                 </p>
+                              )}
+                              {video.status === 'uploaded' && (
+                                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
+                                  {video.previewUrl && (
+                                    <video
+                                      src={video.previewUrl}
+                                      className="w-20 h-12 rounded-md object-cover border border-slate-200"
+                                      muted
+                                      controls={false}
+                                    />
+                                  )}
+                                  {video.duration !== undefined && <span>Duration: {formatDurationLabel(video.duration)}</span>}
+                                  {video.size !== undefined && <span>Size: {(video.size / (1024 * 1024)).toFixed(1)}MB</span>}
+                                  {video.format && <span>Format: {video.format.replace('video/', '').toUpperCase()}</span>}
+                                </div>
                               )}
                             </div>
                           )}
@@ -799,6 +998,7 @@ function SuccessToast({ kind }: { kind: ToastKind }) {
     course_created: 'Course created successfully!',
     video_uploaded: 'Video uploaded successfully!',
     section_added: 'Section added successfully!',
+    course_updated: 'Course updated successfully!',
   };
 
   return (
@@ -813,7 +1013,12 @@ function SuccessToast({ kind }: { kind: ToastKind }) {
   );
 }
 
-async function uploadFileWithProgress(url: string, file: File, onProgress: (progress: number) => void) {
+async function uploadFileWithProgress(
+  url: string,
+  file: File,
+  onProgress: (progress: number) => void,
+  registerCancel: (fn: () => void) => void
+) {
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
@@ -824,6 +1029,7 @@ async function uploadFileWithProgress(url: string, file: File, onProgress: (prog
       }
     };
     xhr.onload = () => {
+      registerCancel(() => {});
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(100);
         resolve();
@@ -831,7 +1037,15 @@ async function uploadFileWithProgress(url: string, file: File, onProgress: (prog
         reject(new Error(`Upload failed with status ${xhr.status}`));
       }
     };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onerror = () => {
+      registerCancel(() => {});
+      reject(new Error('Network error during upload'));
+    };
+    xhr.onabort = () => {
+      registerCancel(() => {});
+      reject(new Error('Upload canceled'));
+    };
+    registerCancel(() => xhr.abort());
     xhr.send(file);
   });
 }
