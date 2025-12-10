@@ -5,6 +5,8 @@ import { type ReactNode } from 'react';
 import { prisma } from '../../../../lib/prisma';
 import { getUserFromRequest } from '../../../../lib/auth/getUserFromRequest';
 import { EnrollButton } from './EnrollButton';
+import { ShareCourseBanner } from './ShareCourseBanner';
+import { CourseShareTracker } from './CourseShareTracker';
 
 type Section = {
   id: string;
@@ -31,8 +33,24 @@ type CourseContent = {
   mediaMetadata?: { duration: number | null } | null;
 };
 
-export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CoursePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = searchParams ? await searchParams : undefined;
+  const rawRef = query?.ref;
+  const referrerId =
+    typeof rawRef === 'string'
+      ? rawRef.trim()
+      : Array.isArray(rawRef)
+      ? rawRef[0]?.trim()
+      : null;
+  const sanitizedReferrerId =
+    referrerId && /^[a-zA-Z0-9-]+$/.test(referrerId) && referrerId.length <= 100 ? referrerId : null;
   if (!id) {
     notFound();
   }
@@ -73,10 +91,37 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   );
   const rating = course.averageRating ?? 0;
   const isFree = !course.isPaid || !course.priceAda || Number(course.priceAda) <= 0;
+  const initialShareStats =
+    course.userId === user?.id
+      ? await prisma.courseShareStats.findUnique({
+          where: { courseId_instructorId: { courseId: course.id, instructorId: course.userId } },
+          select: { totalClicks: true, totalEnrollments: true, conversionRate: true },
+        })
+      : null;
+  const normalizedShareStats = initialShareStats
+    ? {
+        totalClicks: initialShareStats.totalClicks ?? 0,
+        totalEnrollments: initialShareStats.totalEnrollments ?? 0,
+        conversionRate:
+          initialShareStats.conversionRate && initialShareStats.conversionRate > 0
+            ? Number(initialShareStats.conversionRate.toFixed(1))
+            : initialShareStats.totalClicks > 0
+            ? Number(((initialShareStats.totalEnrollments / initialShareStats.totalClicks) * 100).toFixed(2))
+            : 0,
+      }
+    : null;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
+      <CourseShareTracker
+        courseId={course.id}
+        referrerId={sanitizedReferrerId}
+        enabled={!!sanitizedReferrerId}
+      />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-10">
+        {course.userId === user?.id && (
+          <ShareCourseBanner courseId={course.id} instructorId={course.userId} initialStats={normalizedShareStats} />
+        )}
         <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start bg-white border border-slate-200 rounded-3xl shadow-sm p-6 sm:p-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 uppercase tracking-wide">

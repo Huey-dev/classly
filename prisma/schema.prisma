@@ -71,6 +71,11 @@ model User {
 
   // enrollments
   enrollments     Enrollment[]
+  // referral tracking
+  shareStats      CourseShareStats[]   @relation("InstructorShareStats")
+  shareClicks     CourseShareClick[]   @relation("InstructorShareClicks")
+  courseStudentRefs CourseStudents[]   @relation("RefInstructorUsers")
+  courseStudentMemberships CourseStudents[] @relation("CourseStudentUsers")
   classrooms    Classroom[]  @relation("UserClassrooms")
   // social
   followers       Follow[] @relation("following")
@@ -154,6 +159,9 @@ model Course {
   author          User               @relation("AuthorCourses", fields: [userId], references: [id], onDelete: Cascade)
   contents        Content[]
   enrollments     Enrollment[]
+  shareStats      CourseShareStats[]   @relation("CourseShareStatsCourse")
+  shareClicks     CourseShareClick[]   @relation("CourseShareClickCourse")
+  courseStudents  CourseStudents[]     @relation("CourseStudentCourse")
   certificates    CertificateNFT[]
   escrowLinks     Escrow[]           @relation("CourseEscrows")
 
@@ -345,6 +353,58 @@ model Enrollment {
 
   @@index([courseId])
   @@index([userId])
+}
+
+/* -----------------------------------
+   REFERRAL / SHARE TRACKING
+------------------------------------ */
+
+model CourseShareStats {
+  id               String   @id @default(uuid())
+  courseId         String
+  instructorId     String
+  totalClicks      Int      @default(0)
+  totalEnrollments Int      @default(0)
+  conversionRate   Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  course      Course @relation("CourseShareStatsCourse", fields: [courseId], references: [id], onDelete: Cascade)
+  instructor  User   @relation("InstructorShareStats", fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, instructorId])
+  @@index([instructorId])
+}
+
+model CourseShareClick {
+  id           String   @id @default(uuid())
+  courseId     String
+  instructorId String
+  ipHash       String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  course     Course @relation("CourseShareClickCourse", fields: [courseId], references: [id], onDelete: Cascade)
+  instructor User   @relation("InstructorShareClicks", fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, instructorId, createdAt])
+  @@index([courseId, instructorId, ipHash])
+}
+
+model CourseStudents {
+  id              String   @id @default(uuid())
+  courseId        String
+  studentId       String
+  refInstructorId String
+  createdAt       DateTime @default(now())
+
+  course        Course @relation("CourseStudentCourse", fields: [courseId], references: [id], onDelete: Cascade)
+  student       User   @relation("CourseStudentUsers", fields: [studentId], references: [id], onDelete: Cascade)
+  refInstructor User   @relation("RefInstructorUsers", fields: [refInstructorId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([refInstructorId])
+  @@index([courseId])
 }
 
 /* -----------------------------------
