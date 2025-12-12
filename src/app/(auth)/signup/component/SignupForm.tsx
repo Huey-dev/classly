@@ -5,7 +5,6 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
   const [formData, setFormData] = useState<SignupFormData>({
     email: "",
     password: "",
-    phone: "",
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -37,22 +36,6 @@ const SignupForm = ({ onSubmit, loading, error }: SignupFormProps) => {
           className="mt-1 block w-full border border-gray-200 rounded-lg px-3 py-3 bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none transition"
           disabled={loading}
           placeholder="Your email address"
-        />
-      </div>
-
-      <div className="space-y-1">
-        <label htmlFor="phone" className="font-medium text-sm text-gray-700">
-          Mobile Number (optional)
-        </label>
-        <input
-          id="phone"
-          name="phone"
-          type="tel"
-          value={formData.phone || ""}
-          onChange={handleChange}
-          className="mt-1 block w-full border border-gray-200 rounded-lg px-3 py-3 bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none transition"
-          disabled={loading}
-          placeholder="Your mobile number"
         />
       </div>
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import router from 'next/router';
+import { useRouter } from 'next/navigation';
 import { EscrowPayment } from '../payment/EscrowPayment';
 import { EnrollmentList } from '../../component/EnrollmentList/EnrollmentList';
 import { useLucid } from '../../context/LucidContext';
 
-// Utility to copy text to clipboard
+// Utility to copy text to clipboard (avoids navigator permissions issues)
 function copyToClipboard(text: string) {
   const el = document.createElement('textarea');
   el.value = text;
@@ -17,56 +17,13 @@ function copyToClipboard(text: string) {
   document.body.removeChild(el);
 }
 
-// Mock course data
-const MOCK_COURSES = [
-  {
-    id: 'math_101',
-    name: 'Advanced Mathematics 101',
-    teacherAddress: 'addr_test1qpt3f4vez5n62gasjjdp4pcvhycawz2wqkl7pmaw4cm92gfpl62xydflec2wn6sj5lzrq6fr5rfj0v8qj902klgewvhsk3vdrs',
-    teacherName: 'Prof. Smith',
-    price: 50,
-    duration: '8 weeks',
-    description: 'Learn advanced calculus and linear algebra',
-    nftPolicyId: 'abc123...',
-    nftAssetName: 'course_MATH101',
-    rating: 4.8,
-    students: 45,
-  },
-  {
-    id: 'physics_201',
-    name: 'Quantum Physics',
-    teacherAddress: 'addr_test1qy...',
-    teacherName: 'Dr. Johnson',
-    price: 75,
-    duration: '10 weeks',
-    description: 'Introduction to quantum mechanics',
-    nftPolicyId: 'def456...',
-    nftAssetName: 'course_PHYS201',
-    rating: 4.9,
-    students: 32,
-  },
-  {
-    id: 'cs_301',
-    name: 'Smart Contract Development',
-    teacherAddress: 'addr_test1qx...',
-    teacherName: 'Prof. Anderson',
-    price: 100,
-    duration: '12 weeks',
-    description: 'Build dApps on Cardano',
-    nftPolicyId: 'ghi789...',
-    nftAssetName: 'course_CS301',
-    rating: 5.0,
-    students: 28,
-  },
-];
-
 export default function StudentDashboard() {
+  const router = useRouter();
   const {
     lucid,
     walletAddress: address,
     balance,
     seedPhrase,
-    connectWallet,
     disconnectWallet,
     refreshBalance,
     connecting,
@@ -78,6 +35,36 @@ export default function StudentDashboard() {
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [showSeedModal, setShowSeedModal] = useState<boolean>(false);
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [coursesError, setCoursesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadCourses = async () => {
+      setCoursesLoading(true);
+      setCoursesError(null);
+      try {
+        const res = await fetch('/api/courses/public');
+        if (!res.ok) {
+          throw new Error(`Failed to load courses: ${res.status}`);
+        }
+        const data = await res.json();
+        if (!active) return;
+        const monetized = (data || []).filter((c: any) => Number(c.priceAda ?? 0) > 0);
+        setCourses(monetized);
+      } catch (e: any) {
+        if (!active) return;
+        setCoursesError(e?.message || 'Unable to load courses');
+      } finally {
+        if (active) setCoursesLoading(false);
+      }
+    };
+    loadCourses();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const displayMessage = (text: string, type: 'success' | 'warning' | 'error' = 'success') => {
     setMessage({ text, type });
@@ -115,12 +102,23 @@ export default function StudentDashboard() {
   };
 
   const safeBalance = balance ?? 0;
+  const visibleCourses = courses.map((c) => ({
+    id: c.id,
+    name: c.title,
+    teacherAddress: c.author?.walletAddress ?? '',
+    teacherName: c.author?.name ?? 'Instructor',
+    price: Number(c.priceAda ?? 0),
+    duration: c.durationWeeks ? `${c.durationWeeks} wks` : 'Duration N/A',
+    description: c.description,
+    rating: c.averageRating ?? 0,
+    students: c.enrollmentCount ?? 0,
+  }));
 
   if (loading || connecting) {
     return (
       <main className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center max-w-md">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Connecting Wallet</h2>
           <p className="text-gray-600 dark:text-gray-300">Loading Cardano testnet wallet...</p>
         </div>
@@ -133,7 +131,7 @@ export default function StudentDashboard() {
       <main className="min-h-screen bg-gradient-to-br from-red-600 to-orange-600 dark:bg-gray-900 p-8">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-            <div className="text-6xl mb-4">❌</div>
+            <div className="text-6xl mb-4">:(</div>
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">Wallet Connection Error</h2>
             <p className="text-gray-600 dark:text-gray-300 mb-4">
               Could not initialize Cardano wallet. Please check your configuration.
@@ -151,7 +149,7 @@ export default function StudentDashboard() {
 
             <div className="mt-4">
               <Link href="/" className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition">
-                ← Back to Home
+                Back to Home
               </Link>
             </div>
           </div>
@@ -191,7 +189,7 @@ export default function StudentDashboard() {
                   onClick={handleCopyAddress}
                   className="text-blue-600 hover:text-blue-700 font-bold text-sm"
                 >
-                  📋
+                  Copy
                 </button>
               </div>
             </div>
@@ -233,57 +231,75 @@ export default function StudentDashboard() {
 
         {/* Main Content */}
         <div className="grid lg:grid-cols-3 gap-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-          {/* course List */}
+          {/* Course List */}
           <div className="lg:col-span-2">
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Available Courses</h2>
 
               <div className="space-y-4">
-                {MOCK_COURSES.map((course) => (
-                  <div
-                    key={course.id}
-                    className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition"
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-xl font-bold text-gray-800 mb-1">{course.name}</h3>
-                        <p className="text-sm text-gray-600 mb-2">by {course.teacherName}</p>
-                        <p className="text-gray-700 text-sm mb-3">{course.description}</p>
+                {coursesLoading && (
+                  <div className="animate-pulse space-y-4">
+                    {[0, 1].map((i) => (
+                      <div key={i} className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+                        <div className="h-6 bg-gray-200 rounded w-1/3 mb-3" />
+                        <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
+                        <div className="h-4 bg-gray-200 rounded w-full mb-2" />
+                        <div className="h-4 bg-gray-200 rounded w-2/3" />
                       </div>
-
-                      <div className="text-right ml-4">
-                        <p className="text-2xl font-bold text-purple-600">{course.price} tADA</p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
-                      <div className="flex items-center">
-                        <span className="mr-1">📅</span>
-                        {course.duration}
-                      </div>
-                      <div className="flex items-center">
-                        <span className="mr-1">⭐</span>
-                        {course.rating} rating
-                      </div>
-                      <div className="flex items-center">
-                        <span className="mr-1">👥</span>
-                        {course.students} students
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => setSelectedCourse(course)}
-                      disabled={safeBalance < course.price}
-                      className={`w-full font-bold py-3 px-6 rounded-lg transition ${
-                        safeBalance < course.price
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                    >
-                      {safeBalance < course.price ? 'Insufficient Balance' : 'Enroll Now →'}
-                    </button>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {coursesError && !coursesLoading && (
+                  <div className="border border-red-200 bg-red-50 text-red-700 rounded-xl p-4">
+                    {coursesError}
+                  </div>
+                )}
+
+                {!coursesLoading && !coursesError && visibleCourses.length === 0 && (
+                  <div className="border border-gray-200 rounded-xl p-6 text-center text-gray-600">
+                    No monetized courses available yet.
+                  </div>
+                )}
+
+                {!coursesLoading &&
+                  !coursesError &&
+                  visibleCourses.map((course) => (
+                    <div
+                      key={course.id}
+                      className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex-1">
+                          <h3 className="text-xl font-bold text-gray-800 mb-1">{course.name}</h3>
+                          <p className="text-sm text-gray-600 mb-2">by {course.teacherName}</p>
+                          <p className="text-gray-700 text-sm mb-3">{course.description}</p>
+                        </div>
+
+                        <div className="text-right ml-4">
+                          <p className="text-2xl font-bold text-purple-600">{course.price} tADA</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
+                        <div className="flex items-center">{course.duration}</div>
+                        <div className="flex items-center">{course.rating} rating</div>
+                        <div className="flex items-center">{course.students} students</div>
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedCourse(course)}
+                        disabled={safeBalance < course.price}
+                        className={`w-full font-bold py-3 px-6 rounded-lg transition ${
+                          safeBalance < course.price
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        {safeBalance < course.price ? 'Insufficient Balance' : 'Enroll Now'}
+                      </button>
+                    </div>
+                  ))}
               </div>
             </div>
           </div>
@@ -301,7 +317,7 @@ export default function StudentDashboard() {
               />
             ) : (
               <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-                <div className="text-6xl mb-4">📚</div>
+                <div className="text-6xl mb-4">🎓</div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">Select a Class</h3>
                 <p className="text-gray-600 text-sm">
                   Choose a class from the list to enroll and make payment
@@ -317,13 +333,13 @@ export default function StudentDashboard() {
                   onClick={() => setShowSeedModal(true)}
                   className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg transition"
                 >
-                  🔑 View Seed Phrase
+                  View Seed Phrase
                 </button>
                 <button
                   onClick={() => setShowResetModal(true)}
                   className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition"
                 >
-                  🔄 Reset Wallet
+                  Reset Wallet
                 </button>
               </div>
             </div>
@@ -361,9 +377,9 @@ export default function StudentDashboard() {
         {showSeedModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl">
-              <h3 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-3">🔑 Your Seed Phrase</h3>
+              <h3 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-3">Your Seed Phrase</h3>
               <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
-                <p className="text-red-800 font-bold">⚠️ NEVER SHARE YOUR SEED PHRASE!</p>
+                <p className="text-red-800 font-bold">WARNING: NEVER SHARE YOUR SEED PHRASE!</p>
                 <p className="text-red-700 text-sm mt-1">
                   Anyone with this phrase can access your wallet and funds.
                 </p>
@@ -376,7 +392,7 @@ export default function StudentDashboard() {
                   onClick={handleCopySeed}
                   className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg transition"
                 >
-                  📋 Copy Seed
+                  Copy Seed
                 </button>
                 <button
                   onClick={() => setShowSeedModal(false)}
@@ -395,7 +411,7 @@ export default function StudentDashboard() {
             <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
               <h3 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-3">Confirm Wallet Reset</h3>
               <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
-                <p className="text-red-800 font-bold mb-2">⚠️ WARNING: This action is irreversible!</p>
+                <p className="text-red-800 font-bold mb-2">WARNING: This action is irreversible!</p>
                 <p className="text-red-700 text-sm">
                   You will lose access to the current wallet and any funds in it unless you have saved the seed phrase.
                 </p>

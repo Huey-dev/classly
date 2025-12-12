@@ -44,47 +44,51 @@ const Page = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center bg-[#f6faff] dark:bg-gray-900 justify-center px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg">
-        <div className="flex items-center justify-center">
-          <Image src="/app-logo.png" alt="Classly logo" width={48} height={48} />
-        </div>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-gray-500">Login</p>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back!</h2>
-          <p className="text-sm text-gray-500">Please login to continue</p>
-        </div>
+    <main className="min-h-screen bg-[#f6faff] dark:bg-gray-900 grid md:grid-cols-2 grid-cols-1">
+      <div className="flex items-center justify-center bg-white dark:bg-gray-800 px-6 md:px-12">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex items-center gap-3">
+            <Image src="/app-logo.png" alt="Classly logo" width={48} height={48} />
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Welcome back</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Sign in to Classly</h2>
+            </div>
+          </div>
 
-        <SigninForm
-          onSubmit={handleSubmit}
-          loading={loading}
-          error={error}
-          success={success}
-        />
+          <SigninForm onSubmit={handleSubmit} loading={loading} error={error} success={success} />
 
-        <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-          Forgot Password
-        </div>
-
-        <div className="text-center text-sm text-gray-500 dark:text-gray-300">Or continue with</div>
-        <div className="flex items-center justify-center">
+          <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-300">
+            <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+            <span className="whitespace-nowrap">Or continue with</span>
+            <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+          </div>
           <button
             onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="w-full sm:w-auto px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
+            className="w-full px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
           >
             <Image src="/google.svg" alt="Google" width={18} height={18} />
             <span className="text-sm font-medium text-gray-700">Sign in with Google</span>
           </button>
-        </div>
 
-        <div className="text-center mt-2 text-sm text-gray-600 dark:text-gray-300">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-800">
-            Create Account
-          </Link>
+          <div className="text-center mt-2 text-sm text-gray-600 dark:text-gray-300">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-800">
+              Sign up
+            </Link>
+          </div>
         </div>
       </div>
-    </div>
+
+      <div className="hidden md:flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-white px-8">
+        <div className="text-center space-y-4">
+          <Image src="/app-logo.png" alt="Classly logo" width={72} height={72} className="mx-auto" />
+          <h3 className="text-2xl font-semibold">Classly</h3>
+          <p className="text-sm text-blue-100 max-w-sm mx-auto">
+            Decentralized learning with escrow-protected payouts. Sign in to continue your journey.
+          </p>
+        </div>
+      </div>
+    </main>
   );
 };
 

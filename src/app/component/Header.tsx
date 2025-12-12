@@ -66,20 +66,23 @@ export const Header = ({
 
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
+  const signOutClick = async () => {
+    try {
+      await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+    } finally {
+      await import("next-auth/react").then(({ signOut }) => signOut({ redirect: false }));
+      window.location.href = "https://accounts.google.com/Logout";
+    }
+  };
+
   const itemsDesktop: DropdownItem[] = [
-    { label: "My Profile", href: "/profile" },
-    { label: "Dashboard", href: "/dashboard" },
-    { label: "My Courses", href: "/courses" },
-    { label: resolvedTheme === "dark" ? "Switch to Light" : "Switch to Dark", onClick: toggleTheme },
-    { label: "Sign Out", href: "/api/auth/signout", danger: true },
+    { label: "Profile", href: "/profile" },
+    { label: "Sign Out", onClick: signOutClick, danger: true },
   ];
 
   const itemsMobile: DropdownItem[] = [
     { label: "Profile", href: "/profile" },
-    { label: "Upload", href: "/upload" },
-    { label: "My Courses", href: "/courses" },
-    { label: resolvedTheme === "dark" ? "Switch to Light" : "Switch to Dark", onClick: toggleTheme },
-    { label: "Sign Out", href: "/api/auth/signout", danger: true },
+    { label: "Sign Out", onClick: signOutClick, danger: true },
   ];
 
   const handleAvatarClick = () => {
@@ -159,6 +162,7 @@ export const Header = ({
           open={dropdownOpen}
           onClose={() => setDropdownOpen(false)}
           items={isMobile ? itemsMobile : itemsDesktop}
+          align="right"
         />
       </div>
 

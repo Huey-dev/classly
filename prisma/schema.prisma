@@ -54,6 +54,7 @@ model User {
   email           String      @unique
   image           String?
   password        String?
+  walletAddress   String?     @db.Text
   hasOnboarded    Boolean     @default(false)
   emailVerified   DateTime?
   role            Role        @default(USER)
@@ -412,19 +413,32 @@ model CourseStudents {
 ------------------------------------ */
 
 model Escrow {
-  id            String    @id @default(uuid())
-  courseId      String?
-  teacherId     String
-  studentId     String
-  adaAmount     Decimal
-  status        String
-  lockedAt      DateTime  @default(now())
+  id             String    @id @default(uuid())
+  courseId       String?
+  teacherId      String?
+  studentId      String?
+  adaAmount      Decimal   @default(0)
+  status         String    @default("PENDING")
+  lockedAt       DateTime  @default(now())
+  receiverPkh    String?
+  oraclePkh      String?
+  scriptAddress  String?
+  netTotal       Decimal   @default(0)
+  paidCount      Int       @default(0)
+  paidOut        Decimal   @default(0)
+  released30     Boolean   @default(false)
+  released40     Boolean   @default(false)
+  releasedFinal  Boolean   @default(false)
+  comments       Int       @default(0)
+  ratingSum      Int       @default(0)
+  ratingCount    Int       @default(0)
+  allWatchMet    Boolean   @default(true)
+  firstWatch     BigInt    @default(0)
+  disputeBy      BigInt    @default(0)
 
   course        Course? @relation("CourseEscrows", fields: [courseId], references: [id], onDelete: SetNull)
-
-  // FIXED RELATIONS (you MUST name them)
-  teacher       User    @relation("EscrowTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
-  student       User    @relation("EscrowStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher       User?   @relation("EscrowTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  student       User?   @relation("EscrowStudent", fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@index([teacherId])

@@ -56,47 +56,54 @@ const Page = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center bg-[#f6faff] dark:bg-gray-900 justify-center px-4 sm:px-6 lg:px-8">
-      {/* display success message */}
-      {showToast && (
-        <Toast message="Account created successfully, Please wait...!" />
-      )}
-      <Modal
-        show={showModal}
-        onClose={() => router.push("/")}
-        onCreate={() => router.push("/upload")}
-      />
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg">
-        <div className="flex items-center justify-center">
-          <Image src="/app-logo.png" alt="Classly logo" width={48} height={48} />
-        </div>
-        <div className="text-center space-y-2">
-          <p className="text-sm text-gray-500">Create Account</p>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome!</h2>
-          <p className="text-sm text-gray-500">Enter your information or continue with social</p>
-        </div>
+    <main className="min-h-screen bg-[#f6faff] dark:bg-gray-900 grid md:grid-cols-2 grid-cols-1">
+      {showToast && <Toast message="Account created successfully, Please wait...!" />}
+      <Modal show={showModal} onClose={() => router.push("/")} onCreate={() => router.push("/upload")} />
 
-        <SignupForm onSubmit={handleSubmit} loading={loading} error={error} />
+      <section className="flex items-center justify-center bg-white dark:bg-gray-800 px-6 md:px-12">
+        <div className="w-full max-w-md space-y-6 py-12">
+          <div className="flex items-center gap-3">
+            <Image src="/app-logo.png" alt="Classly logo" width={48} height={48} />
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Create account</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Join Classly</h2>
+            </div>
+          </div>
 
-        <div className="text-center text-sm text-gray-500 dark:text-gray-300">Or continue with</div>
-        <div className="flex items-center justify-center">
+          <SignupForm onSubmit={handleSubmit} loading={loading} error={error} />
+
+          <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-300">
+            <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+            <span className="whitespace-nowrap">Or continue with</span>
+            <span className="flex-1 h-px bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+          </div>
           <button
             onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="w-full sm:w-auto px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
+            className="w-full px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
           >
             <Image src="/google.svg" alt="Google" width={18} height={18} />
             <span className="text-sm font-medium text-gray-700">Sign up with Google</span>
           </button>
-        </div>
 
-        <div className="text-center mt-2 text-sm text-gray-600 dark:text-gray-300">
-          Already have an account?{" "}
-          <Link href="/signin" className="font-medium text-blue-600 hover:text-blue-800">
-            Login
-          </Link>
+          <div className="text-center mt-2 text-sm text-gray-600 dark:text-gray-300">
+            Already have an account?{" "}
+            <Link href="/signin" className="font-medium text-blue-600 hover:text-blue-800">
+              Sign in
+            </Link>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="hidden md:flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-white px-8">
+        <div className="text-center space-y-4">
+          <Image src="/app-logo.png" alt="Classly logo" width={72} height={72} className="mx-auto" />
+          <h3 className="text-2xl font-semibold">Classly</h3>
+          <p className="text-sm text-blue-100 max-w-sm mx-auto">
+            Learn and teach with escrow-protected payouts. Create your account to get started.
+          </p>
+        </div>
+      </section>
+    </main>
   );
 };
 

@@ -22,6 +22,9 @@ interface Video {
   author: Author;
 }
 
+const isLikelyPlaybackId = (id?: string | null) =>
+  !!id && /^[A-Za-z0-9]+$/.test(id) && id.length >= 10 && id.length <= 64;
+
 export default function VideoGrid() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +95,7 @@ function VideoCard({ video }: { video: Video }) {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<string[]>([]);
 
-  const thumbnail = video.muxPlaybackId
+  const thumbnail = isLikelyPlaybackId(video.muxPlaybackId)
     ? `https://image.mux.com/${video.muxPlaybackId}/thumbnail.jpg?time=1`
     : null;
   const durationSeconds = video.mediaMetadata?.duration ?? null;

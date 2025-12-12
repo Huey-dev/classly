@@ -60,54 +60,29 @@ export default function ClientLayout({
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className="hidden md:block z-40 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 w-56"
+          className="hidden md:flex flex-col sticky top-[64px] z-10 h-[calc(100vh-64px)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 w-56"
           aria-label="Primary navigation"
         >
-          <nav className="p-4 space-y-2 pt-4">
-            <NavLink href="/" icon="" label="Home" active />
-
-            <hr className="my-4 border-gray-200 dark:border-gray-700" />
-
+          <nav className="p-4 space-y-2 pt-4 flex-1">
             <a
-              href="/student"
+              href="/dashboard"
               className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
-              Student 
+              Dashboard 
             </a>
-            <a
-              href="/signup"
-              className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              Sign up
-            </a>
-            <a
-              href="/signin"
-              className="block w-full px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              Sign in
-            </a>
-            <a
-              href="/signout"
-              className="block w-full px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              Sign out
-            </a>
-            {/* profile */}
-            <hr className="my-4 border-gray-200 dark:border-gray-700" />
-            <NavLink href="/me" icon="" label="Profile" />
-            <hr className="my-4 border-gray-200 dark:border-gray-700" />
-
-            {/* Dark Mode Toggle */}
-            {mounted && (
+          </nav>
+          {/* Dark Mode Toggle bottom-left */}
+          {mounted && (
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="p-2 flex gap-2 items-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                className="p-2 flex items-center justify-center w-10 h-10 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
                 aria-label="Toggle dark mode"
               >
-                Toogle mode{theme === "light" ? <IconMoon /> : <IconSun />}
+                {theme === "light" ? <IconMoon /> : <IconSun />}
               </button>
-            )}
-          </nav>
+            </div>
+          )}
         </aside>
 
         {/* Main Content Area */}

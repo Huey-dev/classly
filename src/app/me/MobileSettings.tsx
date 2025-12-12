@@ -14,7 +14,14 @@ export default function MobileSettings() {
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
       <button
-        onClick={() => signOut({ callbackUrl: "/" })}
+        onClick={async () => {
+          try {
+            await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+          } finally {
+            await signOut({ redirect: false });
+            window.location.href = "https://accounts.google.com/Logout";
+          }
+        }}
         className="w-full px-4 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200 transition font-semibold text-sm"
       >
         Sign out

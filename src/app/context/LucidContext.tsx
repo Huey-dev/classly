@@ -117,6 +117,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
           "Preprod"
         );
         setLucidInstance(lucid);
+        setLucid(lucid); // make lucid available to consumers
         console.log("✅ Lucid instance created");
 
         // Select wallet from seed phrase

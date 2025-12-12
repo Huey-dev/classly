@@ -43,6 +43,9 @@ type Related = { id: string; title: string; muxPlaybackId: string | null; durati
 
 type Comment = { id: string; text: string; author: string; createdAt: string };
 
+const isLikelyPlaybackId = (id?: string | null) =>
+  !!id && /^[A-Za-z0-9]+$/.test(id) && id.length >= 10 && id.length <= 64;
+
 
 
 export default function WatchClient({ video, related, enrolled }: { video: Video; related: Related; enrolled: boolean }) {
@@ -513,27 +516,17 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
               >
 
-                <div className="w-28 h-16 bg-black rounded-md overflow-hidden flex-shrink-0">
-
-                  {item.muxPlaybackId ? (
-
-                    <img
-
-                      src={`https://image.mux.com/${item.muxPlaybackId}/thumbnail.jpg?time=1`}
-
-                      alt={item.title}
-
-                      className="w-full h-full object-cover"
-
-                    />
-
-                  ) : (
-
-                    <div className="w-full h-full bg-gray-700" />
-
-                  )}
-
-                </div>
+                  <div className="w-28 h-16 bg-black rounded-md overflow-hidden flex-shrink-0">
+                    {isLikelyPlaybackId(item.muxPlaybackId) ? (
+                      <img
+                        src={`https://image.mux.com/${item.muxPlaybackId}/thumbnail.jpg?time=1`}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-700" />
+                    )}
+                  </div>
 
                 <div className="flex-1 min-w-0">
 

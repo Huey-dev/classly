@@ -8,18 +8,46 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const user = await getUserFromRequest();
   const { id } = await params;
 
-  const course = await prisma.course.findUnique({
-    where: { id },
-    include: {
-      author: { select: { id: true, name: true, image: true } },
-      contents: {
-        where: { type: "VIDEO" },
-        include: { mediaMetadata: { select: { duration: true, size: true, format: true } } },
-        orderBy: [{ partNumber: "asc" }, { createdAt: "asc" }],
+  let course;
+  try {
+    course = await prisma.course.findUnique({
+      where: { id },
+      include: {
+        author: { select: { id: true, name: true, image: true, walletAddress: true } },
+        contents: {
+          where: { type: "VIDEO" },
+          include: { mediaMetadata: { select: { duration: true, size: true, format: true } } },
+          orderBy: [{ partNumber: "asc" }, { createdAt: "asc" }],
+        },
+        _count: { select: { enrollments: true, contents: true } },
       },
-      _count: { select: { enrollments: true, contents: true } },
-    },
-  });
+    });
+  } catch (e: any) {
+    if (e?.code === "P1001") {
+      // Fallback demo response when DB is unreachable
+      return NextResponse.json(
+        {
+          id,
+          title: "Demo Course",
+          description: "Demo course (DB unreachable fallback)",
+          coverImage: null,
+          language: "en",
+          priceAda: 10,
+          isPaid: true,
+          averageRating: 0,
+          updatedAt: new Date(),
+          enrollmentCount: 0,
+          videoCount: 0,
+          totalDurationSeconds: 0,
+          author: { id: "demo", name: "Demo Author", image: null },
+          enrolled: false,
+          sections: [],
+        },
+        { status: 200 }
+      );
+    }
+    throw e;
+  }
 
   if (!course) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -84,6 +112,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     id: course.id,
+    userId: course.userId,
     title: course.title,
     description: course.description,
     coverImage: course.coverImage,
@@ -111,21 +140,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { title, description, coverImage, priceAda } = await req.json();
+  const { title, description, coverImage, priceAda, visibility } = await req.json();
   const data: any = {};
   if (typeof title === "string" && title.trim()) data.title = title.trim();
   if (typeof description === "string") data.description = description.trim() || null;
   if (typeof coverImage === "string") data.coverImage = coverImage.trim() || null;
   if (priceAda !== undefined) {
-    if (user.role !== "TEACHER") {
-      return NextResponse.json({ error: "Only verified teachers can set price" }, { status: 403 });
-    }
     const ada = Number(priceAda);
     if (!Number.isFinite(ada) || ada < 0) {
       return NextResponse.json({ error: "Invalid price" }, { status: 400 });
     }
     data.priceAda = ada;
     data.isPaid = ada > 0;
+  }
+  if (typeof visibility === "string") {
+    const allowed = ["DRAFT", "PUBLISHED", "UNLISTED", "ARCHIVED"];
+    if (!allowed.includes(visibility)) {
+      return NextResponse.json({ error: "Invalid visibility" }, { status: 400 });
+    }
+    data.visibility = visibility;
   }
 
   const updated = await prisma.course.update({
@@ -138,6 +171,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       coverImage: true,
       priceAda: true,
       isPaid: true,
+      visibility: true,
     },
   });
 

@@ -75,7 +75,7 @@ export async function getLucidFromSeed(seedPhrase: string): Promise<LucidEvoluti
 
     // Select wallet from seed phrase
     lucid.selectWallet.fromSeed(seedPhrase);
-    
+     
     console.log('✅ Wallet selected from seed phrase');
 
     return lucid;

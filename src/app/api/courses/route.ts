@@ -45,13 +45,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { title, description, coverImage, category } = await req.json();
+  const { title, description, coverImage, category, priceAda, walletAddress } = await req.json();
   if (!title || typeof title !== "string") {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
 
   const baseSlug = slugify(title);
   const uniqueSlug = `${baseSlug || "course"}-${Date.now()}`;
+
+  let normalizedPrice: number | null = null;
+  let isPaid = false;
+  if (priceAda !== undefined && priceAda !== null) {
+    const ada = Number(priceAda);
+    if (!Number.isFinite(ada) || ada < 0) {
+      return NextResponse.json({ error: "Invalid price" }, { status: 400 });
+    }
+    normalizedPrice = ada;
+    isPaid = ada > 0;
+  }
+
+  // If creator provided a wallet, persist it on their profile once.
+  if (typeof walletAddress === "string" && walletAddress.trim()) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { walletAddress: walletAddress.trim() },
+    });
+    user.walletAddress = walletAddress.trim();
+  }
+
+  // For paid courses, require the author to have a wallet set.
+  if (isPaid && (!user.walletAddress || !user.walletAddress.trim())) {
+    return NextResponse.json(
+      { error: "Set your payout wallet address before creating a paid course." },
+      { status: 400 }
+    );
+  }
 
   const course = await prisma.course.create({
     data: {
@@ -62,6 +90,8 @@ export async function POST(req: NextRequest) {
       slug: uniqueSlug,
       visibility: "DRAFT",
       language: typeof category === "string" ? category : null,
+      priceAda: normalizedPrice,
+      isPaid,
     },
   });
 
@@ -72,5 +102,7 @@ export async function POST(req: NextRequest) {
     coverImage: course.coverImage,
     slug: course.slug,
     language: course.language,
+    priceAda: course.priceAda,
+    isPaid: course.isPaid,
   });
 }

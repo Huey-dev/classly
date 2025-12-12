@@ -38,7 +38,14 @@ export default function SettingsMenu() {
             <span className="text-xs text-gray-500">{theme === "dark" ? "Dark" : "Light"}</span>
           </button>
           <button
-            onClick={() => signOut({ callbackUrl: "/" })}
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+              } finally {
+                await signOut({ redirect: false });
+                window.location.href = "https://accounts.google.com/Logout";
+              }
+            }}
             className="w-full px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
           >
             Sign out
