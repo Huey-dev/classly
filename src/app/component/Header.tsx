@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { UserAvatar } from "./UserAvatar";
 import { ProfileDropdown, type DropdownItem } from "./ProfileDropdown";
 import { useTheme } from "next-themes";
-
+import { unifiedSignOut } from "../lib/auth/signout";
 export const Header = ({
   theme,
 }: {
@@ -66,22 +66,17 @@ export const Header = ({
 
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
-  const signOutClick = async () => {
-    try {
-      await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
-    } finally {
-      await import("next-auth/react").then(({ signOut }) => signOut({ redirect: false }));
-      window.location.href = "https://accounts.google.com/Logout";
-    }
-  };
+const signOutClick = async () => {
+  await unifiedSignOut("/signin");
+};
 
   const itemsDesktop: DropdownItem[] = [
-    { label: "Profile", href: "/profile" },
+    { label: "Profile", href: "/me" },
     { label: "Sign Out", onClick: signOutClick, danger: true },
   ];
 
   const itemsMobile: DropdownItem[] = [
-    { label: "Profile", href: "/profile" },
+    { label: "Profile", href: "/signout" },
     { label: "Sign Out", onClick: signOutClick, danger: true },
   ];
 

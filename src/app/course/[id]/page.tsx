@@ -144,6 +144,9 @@ export default async function CoursePage({
   const isOwner = course.userId === user?.id;
   const paidSuccess = query?.paid === '1';
 
+  const showEscrow = !isOwner && !isFree && !!priceAdaNumber;
+  const showClaimNft = enrolled && !isOwner;
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <CourseShareTracker
@@ -164,14 +167,29 @@ export default async function CoursePage({
             <CourseVisibilityControls courseId={course.id} initialVisibility={course.visibility} />
           </div>
         )}
-        {isFree || !isOwner ? null : (
+        {showEscrow && (
           <EscrowWidgetClient
             courseId={course.id}
-            isOwner={isOwner}
+            isOwner={false}
             isPaid={!isFree}
             priceAda={priceAdaNumber}
             initialGrossAda={priceAdaNumber}
           />
+        )}
+        {showClaimNft && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <p className="font-semibold">Completion NFT</p>
+              <p className="text-sm">Mint your completion NFT after finishing the course.</p>
+            </div>
+            <Link
+              href={`/course/${course.id}/claim-nft?courseId=${course.id}`}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold"
+            >
+              Claim NFT
+              <IconArrowRight />
+            </Link>
+          </div>
         )}
         <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start bg-white border border-slate-200 rounded-3xl shadow-sm p-6 sm:p-8">
           <div className="space-y-4">

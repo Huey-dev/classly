@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "../../../../../../lib/prisma";
+import { getUserFromRequest } from "../../../../../../lib/auth/getUserFromRequest";
+
+/**
+ * POST /api/courses/[id]/progress
+ * Body: { watchedSecDelta: number }
+ *
+ * - Only enrolled students can post progress.
+ * - We store cumulative watched seconds per user per course.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getUserFromRequest();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id: courseId } = await params;
+  const body = await req.json().catch(() => ({}));
+  const watchedSecDelta = Number(body?.watchedSecDelta || 0);
+
+  if (!Number.isFinite(watchedSecDelta) || watchedSecDelta <= 0) {
+    return NextResponse.json({ error: "watchedSecDelta must be a positive number" }, { status: 400 });
+  }
+
+  // Must be enrolled
+  const enrollment = await prisma.enrollment.findFirst({
+    where: { courseId, userId: user.id },
+    select: { id: true },
+  });
+
+  if (!enrollment) {
+    return NextResponse.json({ error: "Enroll first" }, { status: 403 });
+  }
+
+  const progress = await prisma.courseWatchProgress.upsert({
+    where: { userId_courseId: { courseId, userId: user.id } },
+    update: { watchedSeconds: { increment: Math.floor(watchedSecDelta) } },
+    create: { courseId, userId: user.id, watchedSeconds: Math.floor(watchedSecDelta) },
+    select: { watchedSeconds: true },
+  });
+
+  return NextResponse.json({ watchedSec: progress.watchedSeconds });
+}

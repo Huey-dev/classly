@@ -1,19 +1,17 @@
-import { auth } from "../../../../../auth";
+import { getUserFromRequest } from "../../../../../lib/auth/getUserFromRequest";
 import { PrismaClient } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 export async function PATCH() {
-  const session = await auth();
-  
   const prisma = new PrismaClient();
 
-  if (!session?.user?.id) {
+  const user = await getUserFromRequest();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
   try {
     await prisma.user.update({
-      where: { id: session.user.id },
+      where: { id: user.id },
       data: { hasOnboarded: true },
     });
 

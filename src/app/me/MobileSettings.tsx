@@ -3,6 +3,7 @@
 import { useTheme } from "next-themes";
 import { signOut } from "next-auth/react";
 import { ThemeToggle } from "../component/ThemeToggle";
+import { unifiedSignOut } from "../lib/auth/signout";
 
 export default function MobileSettings() {
   const { theme = "light", setTheme } = useTheme();
@@ -10,18 +11,13 @@ export default function MobileSettings() {
   return (
     <div className="md:hidden mt-4 space-y-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Appearance</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+          Appearance
+        </span>
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
       <button
-        onClick={async () => {
-          try {
-            await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
-          } finally {
-            await signOut({ redirect: false });
-            window.location.href = "https://accounts.google.com/Logout";
-          }
-        }}
+        onClick={() => unifiedSignOut("/signin")}
         className="w-full px-4 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-200 transition font-semibold text-sm"
       >
         Sign out

@@ -112,6 +112,9 @@ export default function StudentDashboard() {
     description: c.description,
     rating: c.averageRating ?? 0,
     students: c.enrollmentCount ?? 0,
+    coverImage: c.coverImage ?? '',
+    totalParts: c.totalParts ?? null,
+    totalDuration: c.totalDuration ?? null,
   }));
 
   if (loading || connecting) {
@@ -269,22 +272,48 @@ export default function StudentDashboard() {
                       key={course.id}
                       className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition"
                     >
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex flex-col md:flex-row gap-4 mb-4">
+                        <div className="w-full md:w-40 h-28 bg-gray-100 rounded-lg overflow-hidden">
+                          {course.coverImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={course.coverImage} alt={course.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                              No thumbnail
+                            </div>
+                          )}
+                        </div>
                         <div className="flex-1">
-                          <h3 className="text-xl font-bold text-gray-800 mb-1">{course.name}</h3>
-                          <p className="text-sm text-gray-600 mb-2">by {course.teacherName}</p>
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-800 mb-1">{course.name}</h3>
+                              <p className="text-sm text-gray-600 mb-2">by {course.teacherName}</p>
+                            </div>
+                            <div className="text-right ml-4">
+                              <p className="text-2xl font-bold text-purple-600">{course.price} tADA</p>
+                            </div>
+                          </div>
                           <p className="text-gray-700 text-sm mb-3">{course.description}</p>
-                        </div>
 
-                        <div className="text-right ml-4">
-                          <p className="text-2xl font-bold text-purple-600">{course.price} tADA</p>
+                          <div className="flex flex-wrap items-center gap-4 mb-2 text-sm text-gray-600">
+                            <div className="flex items-center">
+                              <span className="mr-1">⏱</span>
+                              {course.totalDuration ? `${Math.round(course.totalDuration / 60)} min` : course.duration}
+                            </div>
+                            <div className="flex items-center">
+                              <span className="mr-1">🎞</span>
+                              {course.totalParts ? `${course.totalParts} sections` : 'Sections N/A'}
+                            </div>
+                            <div className="flex items-center">
+                              <span className="mr-1">★</span>
+                              {course.rating} rating
+                            </div>
+                            <div className="flex items-center">
+                              <span className="mr-1">👥</span>
+                              {course.students} students
+                            </div>
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
-                        <div className="flex items-center">{course.duration}</div>
-                        <div className="flex items-center">{course.rating} rating</div>
-                        <div className="flex items-center">{course.students} students</div>
                       </div>
 
                       <button

@@ -1,21 +1,14 @@
-"use client"
+"use client";
 
-import { signOut } from "next-auth/react"
- 
+import { unifiedSignOut } from "../lib/auth/signout";
+
 export default function Signout() {
   return (
     <button
       className="rounded shadow-md p-4 bg-white"
-      onClick={async () => {
-        try {
-          await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
-        } finally {
-          await signOut({ redirect: false });
-          window.location.href = "https://accounts.google.com/Logout";
-        }
-      }}
+      onClick={() => unifiedSignOut("/signin")}
     >
-      Sign out with google
+      Sign out
     </button>
   );
 }

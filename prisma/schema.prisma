@@ -44,6 +44,25 @@ enum CertificateTargetType {
   GENERIC
 }
 
+enum CompletionStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum NftPolicyMode {
+  PLATFORM_MANAGED
+  CREATOR_MANAGED
+}
+
+enum NftClaimStatus {
+  LOCKED
+  PAYMENT_PENDING
+  PAID
+  MINTING
+  MINTED
+  FAILED
+}
+
 /* -----------------------------------
    USER / AUTH
 ------------------------------------ */
@@ -85,7 +104,8 @@ model User {
   // engagement
   contentLikes    ContentLike[]
   contentReviews  ContentReview[]
-
+  // Watch-time tracking per course
+  courseWatchProgress CourseWatchProgress[]
   // certificate relations
   issuedCertificates     CertificateNFT[] @relation("IssuedCertificates")
   receivedCertificates   CertificateNFT[] @relation("ReceivedCertificates")
@@ -95,6 +115,8 @@ model User {
   receivedUserRatings    UserRating[] @relation("UserReceivedRatings")
   taughtEscrows          Escrow[] @relation("EscrowTeacher")
   studentEscrows         Escrow[] @relation("EscrowStudent")
+  nftMintClaims          NftMintClaim[] @relation("UserNftClaims")
+  courseCompletions      CourseCompletion[]
 }
 
 model Account {
@@ -165,9 +187,38 @@ model Course {
   courseStudents  CourseStudents[]     @relation("CourseStudentCourse")
   certificates    CertificateNFT[]
   escrowLinks     Escrow[]           @relation("CourseEscrows")
-
+  nftConfig       CourseNftConfig?
+  nftClaims       NftMintClaim[]     @relation("CourseNftClaims")
+  completions     CourseCompletion[]
+  // Watch-time aggregation per course
+  courseWatchProgress CourseWatchProgress[]
   @@index([userId])
 }
+
+/* -----------------------------------
+   CourseWatchProgress
+------------------------------------ */
+
+model CourseWatchProgress {
+  userId         String
+  courseId       String
+  watchedSeconds Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  // Composite primary key:
+  // - guarantees one progress row per user per course
+  // - enables atomic upserts
+  @@id([userId, courseId])
+
+  @@index([courseId])
+  @@index([userId])
+}
+
 
 /* -----------------------------------
    CONTENT
@@ -321,6 +372,68 @@ model CertificateNFT {
   @@index([recipientId])
   @@index([courseId])
   @@index([contentId])
+}
+
+model CourseNftConfig {
+  id               String         @id @default(uuid())
+  courseId         String         @unique
+  enabled          Boolean        @default(false)
+  fineLovelace     BigInt         @default(0)
+  eligibilityRule  String         @default("WATCH_100")
+  metadataTemplate Json?
+  imageUrl         String?
+  policyMode       NftPolicyMode  @default(PLATFORM_MANAGED)
+  policyId         String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  course           Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model NftMintClaim {
+  id                   String         @id @default(uuid())
+  courseId             String
+  userId               String
+  recipientAddress     String
+  payerAddress         String
+  status               NftClaimStatus @default(LOCKED)
+  fineLovelace         BigInt         @default(0)
+  estimatedFeeLovelace BigInt         @default(0)
+  txHash               String?
+  policyId             String?
+  assetName            String?
+  assetId              String?
+  errorCode            String?
+  errorMessage         String?
+  idempotencyKey       String         @default(uuid())
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  course               Course         @relation("CourseNftClaims", fields: [courseId], references: [id], onDelete: Cascade)
+  user                 User           @relation("UserNftClaims", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([userId])
+  @@index([status])
+  @@unique([courseId, userId, idempotencyKey])
+}
+
+model CourseCompletion {
+  id          String            @id @default(uuid())
+  courseId    String
+  userId      String
+  status      CompletionStatus  @default(IN_PROGRESS)
+  completedAt DateTime?
+  proof       Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@index([courseId])
+  @@index([userId])
 }
 
 /* -----------------------------------

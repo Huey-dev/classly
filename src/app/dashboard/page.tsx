@@ -9,6 +9,7 @@ import dynamic from 'next/dynamic';
 import ClientLayout from '../component/ClientLayout';
 import InvestorDemoDashboard from './InvestorDemoDashboard';
 import { Suspense } from 'react';
+import { NftMintScaffold } from './NftMintScaffold';
 
 const StudentDashboard = dynamic(() => import('./component/StudentDashboard'), {
   ssr: false,
@@ -36,6 +37,13 @@ export default function DashboardPage() {
           >
             <InvestorDemoDashboard />
           </Suspense>
+        </div>
+        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden">
+          <div className="border-b px-6 py-4">
+            <h2 className="text-xl font-semibold">Completion NFT (stub flow)</h2>
+            <p className="text-sm text-gray-500">Configure and dry-run the NFT mint preparation flow.</p>
+          </div>
+          <NftMintScaffold />
         </div>
       </div>
     </ClientLayout>
