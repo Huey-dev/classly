@@ -67,7 +67,15 @@ export const Header = ({
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
 const signOutClick = async () => {
+  // 1. Optimistically clear UI
+  setUser(null);
+  setDropdownOpen(false);
+
+  // 2. Sign out (NextAuth + JWT + cookies)
   await unifiedSignOut("/signin");
+
+  // 3. Force navigation (guarantees redirect)
+  router.replace("/signin");
 };
 
   const itemsDesktop: DropdownItem[] = [
@@ -76,7 +84,7 @@ const signOutClick = async () => {
   ];
 
   const itemsMobile: DropdownItem[] = [
-    { label: "Profile", href: "/signout" },
+    { label: "Profile", href: "/me" },
     { label: "Sign Out", onClick: signOutClick, danger: true },
   ];
 
