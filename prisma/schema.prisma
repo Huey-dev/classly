@@ -72,6 +72,7 @@ model User {
   name            String?
   email           String      @unique
   image           String?
+  bannerImage     String?
   password        String?
   walletAddress   String?     @db.Text
   hasOnboarded    Boolean     @default(false)

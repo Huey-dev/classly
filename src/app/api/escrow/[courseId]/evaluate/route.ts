@@ -1,81 +1,134 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/escrow/[courseId]/eligibility/route.ts
+import { NextResponse } from "next/server";
 import { prisma } from "../../../../../../lib/prisma";
-import { getUserFromRequest } from "../../../../../../lib/auth/getUserFromRequest";
 
 /**
- * POST /api/escrow/[courseId]/evaluate
+ * GET /api/escrow/[courseId]/eligibility
  *
- * Computes whether Release40 should be unlocked:
- * - Watch progress average >= 60% across enrolled students
- * - At least 1 comment (escrow.comments >= 1)
- * - At least 1 rating (escrow.ratingCount >= 1)
+ * PURE eligibility oracle.
+ * - No wallet
+ * - No frontend trust
+ * - No mutation
  *
- * Only the course owner can trigger evaluation (keeps it simple + abuse-resistant).
+ * Determines whether:
+ * 1) Initial 30% can be withdrawn (>= 5 enrollments)
+ * 2) Metrics-based 40% can be withdrawn (>= 60% avg watch + engagement)
+ * 3) Final 30% can be withdrawn (14 days passed, no dispute)
  */
-type Params = { params: Promise<{ courseId: string }> };
-
-export async function POST(_req: NextRequest, { params }: Params) {
-  const user = await getUserFromRequest();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ courseId: string }> }
+) {
   const { courseId } = await params;
 
+  /* ---------------------------------------------
+   * 1. Fetch course-level facts
+   * --------------------------------------------- */
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { id: true, userId: true, totalDuration: true, enrollmentCount: true },
+    select: {
+      totalDuration: true,      // seconds
+      enrollmentCount: true,    // cached count
+    },
   });
 
-  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
-  if (course.userId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  const escrow = await prisma.escrow.findFirst({ where: { courseId } });
-  if (!escrow) return NextResponse.json({ error: "Escrow not found" }, { status: 404 });
-
-  const totalDuration = course.totalDuration ?? 0;
-  const enrollmentCount = course.enrollmentCount ?? 0;
-
-  // If course has no duration or no enrollments, you cannot compute 60% meaningfully.
-  if (totalDuration <= 0 || enrollmentCount <= 0) {
+  // Hard guard: eligibility math is meaningless without these
+  if (
+    !course ||
+    course.totalDuration === null ||
+    course.totalDuration <= 0 ||
+    course.enrollmentCount === null ||
+    course.enrollmentCount <= 0
+  ) {
     return NextResponse.json({
       eligible: false,
-      reason: "Missing course duration or enrollments",
-      totalDuration,
-      enrollmentCount,
+      reason: "Course duration or enrollment not initialized",
     });
   }
 
-  const agg = await prisma.courseWatchProgress.aggregate({
+  // From here on, TS knows these are numbers
+  const totalDuration = course.totalDuration;
+  const enrollmentCount = course.enrollmentCount;
+
+  /* ---------------------------------------------
+   * 2. Fetch escrow state
+   * --------------------------------------------- */
+  const escrow = await prisma.escrow.findFirst({
+    where: { courseId },
+  });
+
+  if (!escrow) {
+    return NextResponse.json({
+      eligible: false,
+      reason: "Escrow not found",
+    });
+  }
+
+  /* ---------------------------------------------
+   * 3. Initial 30% eligibility
+   * --------------------------------------------- */
+  const initial30Eligible =
+    escrow.paidCount >= 5 && !escrow.released30;
+
+  /* ---------------------------------------------
+   * 4. Aggregate watch progress
+   * --------------------------------------------- */
+  const watchAgg = await prisma.courseWatchProgress.aggregate({
     where: { courseId },
     _sum: { watchedSeconds: true },
   });
 
-  const totalWatched = agg._sum.watchedSeconds ?? 0;
+  const totalWatchedSeconds = watchAgg._sum.watchedSeconds ?? 0;
 
-  // Average watch % across enrolled students
-  const avgWatchPct = totalWatched / (totalDuration * enrollmentCount);
+  // Average watch % across all enrolled students
+  const avgWatchPct =
+    totalWatchedSeconds / (totalDuration * enrollmentCount);
 
-  const hasEngagement = (escrow.comments ?? 0) >= 1 && (escrow.ratingCount ?? 0) >= 1;
-  const meetsWatch = avgWatchPct >= 0.6;
+  const watchMet = avgWatchPct >= 0.6;
 
-  const eligible = hasEngagement && meetsWatch;
+  /* ---------------------------------------------
+   * 5. Engagement checks
+   * --------------------------------------------- */
+  const hasEngagement =
+    (escrow.comments ?? 0) >= 1 &&
+    (escrow.ratingCount ?? 0) >= 1;
 
-  const updated = await prisma.escrow.update({
-    where: { id: escrow.id },
-    data: {
-      released40: eligible ? true : escrow.released40,
-      allWatchMet: meetsWatch,
-    } as any,
-  });
+  const metrics40Eligible =
+    escrow.released30 &&
+    !escrow.released40 &&
+    watchMet &&
+    hasEngagement;
 
+  /* ---------------------------------------------
+   * 6. Final 30% (time-locked)
+   * --------------------------------------------- */
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const final30Eligible =
+    escrow.released40 &&
+    !escrow.releasedFinal &&
+    escrow.disputeBy !== null &&
+    nowSeconds >= escrow.disputeBy;
+
+  /* ---------------------------------------------
+   * 7. Return oracle result
+   * --------------------------------------------- */
   return NextResponse.json({
-    eligible,
-    avgWatchPct,
-    hasEngagement,
-    escrow: {
-      released40: updated.released40,
-      allWatchMet: updated.allWatchMet,
-      comments: updated.comments,
-      ratingCount: updated.ratingCount,
+    eligibility: {
+      initial30: initial30Eligible,
+      metrics40: metrics40Eligible,
+      final30: final30Eligible,
+    },
+    metrics: {
+      avgWatchPct: Number((avgWatchPct * 100).toFixed(2)), // %
+      watchMet,
+      enrollmentCount,
+      totalDuration,
+      totalWatchedSeconds,
+      comments: escrow.comments ?? 0,
+      ratingCount: escrow.ratingCount ?? 0,
+      paidCount: escrow.paidCount,
+      disputeBy: escrow.disputeBy,
     },
   });
 }

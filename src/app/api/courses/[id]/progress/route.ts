@@ -43,3 +43,46 @@ export async function POST(
 
   return NextResponse.json({ watchedSec: progress.watchedSeconds });
 }
+
+/**
+ * GET /api/courses/[id]/progress
+ *
+ * Returns aggregated watch progress for a course. Used by the creator
+ * dashboard to evaluate engagement eligibility. Only the course owner or
+ * an enrolled student can view this data.
+ */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getUserFromRequest();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id: courseId } = await params;
+
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, userId: true },
+  });
+  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
+
+  // Allow course owner or enrolled student
+  if (course.userId !== user.id) {
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { courseId, userId: user.id },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  const agg = await prisma.courseWatchProgress.aggregate({
+    where: { courseId },
+    _sum: { watchedSeconds: true },
+  });
+
+  return NextResponse.json({
+    totalWatchSeconds: Number(agg._sum.watchedSeconds ?? 0),
+  });
+}

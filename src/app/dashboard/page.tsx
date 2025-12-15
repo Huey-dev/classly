@@ -1,51 +1,75 @@
-// ========================================
-// PAGE WRAPPER (Client-side only loader)
-// Location: src/app/student/page.tsx
-// ========================================
 
 'use client';
 
-import dynamic from 'next/dynamic';
-import ClientLayout from '../component/ClientLayout';
-import InvestorDemoDashboard from './InvestorDemoDashboard';
-import { Suspense } from 'react';
-import { NftMintScaffold } from './NftMintScaffold';
+import { useEffect, useState } from 'react';
+import WalletOverview from './component/WalletOverview';
+import PaginatedCourseGrid from './component/PaginatedCourseGrid';
 
-const StudentDashboard = dynamic(() => import('./component/StudentDashboard'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center max-w-md">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Loading Dashboard</h2>
-        <p className="text-gray-600 dark:text-gray-400">Initializing Cardano wallet...</p>
-      </div>
-    </div>
-  ),
-});
-
+/**
+ * DashboardPage displays the user's wallet overview and lists their courses.
+ *
+ * - The API GET /api/me/dashboard returns two arrays: `created` and `enrolled`.
+ * - Each created course includes the latest escrow snapshot (script address, paidCount, paidOut, etc.).
+ * - Each enrolled course includes basic info about the course and its author.
+ * - A loading/error state is shown while data is fetched.
+ */
 export default function DashboardPage() {
+  const [data, setData] = useState({ created: [], enrolled: [] });
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr(null);
+        const res = await fetch('/api/me/dashboard');
+        if (!res.ok) throw new Error(`Dashboard load failed: ${res.status}`);
+        const json = await res.json();
+        if (!alive) return;
+        setData({
+          created: json.created ?? [],
+          enrolled: json.enrolled ?? [],
+        });
+      } catch (e: any) {
+        if (!alive) return;
+        setErr(e?.message ?? 'Failed to load dashboard');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
-    <ClientLayout>
-      <div className="space-y-8">
-        <StudentDashboard />
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden">
-          <Suspense
-            fallback={
-              <div className="p-6 text-sm text-gray-500 dark:text-gray-300">Loading on-chain data...</div>
-            }
-          >
-            <InvestorDemoDashboard />
-          </Suspense>
+    <div className="space-y-8">
+      {/* Wallet overview with copy/connect controls */}
+      <WalletOverview />
+
+      {/* Error message */}
+      {err && (
+        <div className="rounded-2xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300">
+          {err}
         </div>
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-xl overflow-hidden">
-          <div className="border-b px-6 py-4">
-            <h2 className="text-xl font-semibold">Completion NFT (stub flow)</h2>
-            <p className="text-sm text-gray-500">Configure and dry-run the NFT mint preparation flow.</p>
-          </div>
-          <NftMintScaffold />
+      )}
+
+      {/* Loading indicator */}
+      {loading ? (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
+          <p className="text-sm text-gray-600 dark:text-gray-300">Loading your courses…</p>
         </div>
-      </div>
-    </ClientLayout>
+      ) : (
+        <>
+          {/* Enrolled courses – only show if there are any */}
+          <PaginatedCourseGrid title="Enrolled Courses" courses={data.enrolled} mode="student" />
+
+          {/* Created courses – only show if there are any */}
+          <PaginatedCourseGrid title="My Created Courses" courses={data.created} mode="creator" />
+        </>
+      )}
+    </div>
   );
 }

@@ -10,6 +10,7 @@ import { UserAvatar } from "./UserAvatar";
 import { ProfileDropdown, type DropdownItem } from "./ProfileDropdown";
 import { useTheme } from "next-themes";
 import { unifiedSignOut } from "../lib/auth/signout";
+import { useSession } from "next-auth/react";
 export const Header = ({
   theme,
 }: {
@@ -22,6 +23,7 @@ export const Header = ({
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
+  const { data: session } = useSession();
 
   useEffect(() => {
     let active = true;
@@ -66,27 +68,24 @@ export const Header = ({
 
   const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
 
-const signOutClick = async () => {
-  // 1. Optimistically clear UI
-  setUser(null);
-  setDropdownOpen(false);
+  const signOutClick = async () => {
+    // Optimistically clear UI
+    setUser(null);
+    setDropdownOpen(false);
+    await unifiedSignOut("/signin");
+    router.replace("/signin");
+  };
 
-  // 2. Sign out (NextAuth + JWT + cookies)
-  await unifiedSignOut("/signin");
+  const authSource = session?.user ? "Google" : user ? "Email/Password" : null;
 
-  // 3. Force navigation (guarantees redirect)
-  router.replace("/signin");
-};
-
-  const itemsDesktop: DropdownItem[] = [
+  const baseItems: DropdownItem[] = [
     { label: "Profile", href: "/me" },
+    authSource ? { label: `Signed in via ${authSource}` } : null,
     { label: "Sign Out", onClick: signOutClick, danger: true },
-  ];
+  ].filter(Boolean) as DropdownItem[];
 
-  const itemsMobile: DropdownItem[] = [
-    { label: "Profile", href: "/me" },
-    { label: "Sign Out", onClick: signOutClick, danger: true },
-  ];
+  const itemsDesktop: DropdownItem[] = baseItems;
+  const itemsMobile: DropdownItem[] = baseItems;
 
   const handleAvatarClick = () => {
     if (!user) {

@@ -45,10 +45,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const body = await req.json();
     const walletAddress = typeof body.walletAddress === "string" ? body.walletAddress.trim() : null;
+    const image =
+      typeof body.image === "string" && body.image.trim().length > 0
+        ? body.image.trim()
+        : null;
+    const bannerImage =
+      typeof body.bannerImage === "string" && body.bannerImage.trim().length > 0
+        ? body.bannerImage.trim()
+        : null;
+    const name =
+      typeof body.name === "string" && body.name.trim().length > 0
+        ? body.name.trim()
+        : null;
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { walletAddress },
-      select: { id: true, walletAddress: true },
+      data: { walletAddress, image, bannerImage, name },
+      select: { id: true, walletAddress: true, image: true, bannerImage: true, name: true },
     });
     return NextResponse.json(updated);
   } catch (error: any) {
@@ -59,4 +71,3 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     );
   }
 }
-
