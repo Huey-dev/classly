@@ -19,7 +19,7 @@ import Image from "next/image";
 export default function GoogleSignInButton() {
   return (
     <button
-      onClick={() => signIn("google")}
+      onClick={() => signIn("google", { callbackUrl: "/" })}
       className="w-full px-5 py-3 rounded-lg border border-gray-200 bg-white flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition"
     >
       <span>Continue with Google</span>
