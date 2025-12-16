@@ -3,20 +3,23 @@ import { cookies } from "next/headers";
 
 async function clearAuthCookies() {
   const cookieStore = await cookies();
-  cookieStore.set("accessToken", "", {
+  const expireOpts = (sameSite: "strict" | "lax") => ({
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     expires: new Date(0),
     path: "/",
-    sameSite: "strict",
+    sameSite,
   });
-  cookieStore.set("refreshToken", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    expires: new Date(0),
-    path: "/",
-    sameSite: "strict",
-  });
+
+  // Custom JWT cookies (local auth)
+  cookieStore.set("accessToken", "", expireOpts("strict"));
+  cookieStore.set("refreshToken", "", expireOpts("strict"));
+
+  // NextAuth / Auth.js session cookies (Google, etc.)
+  cookieStore.set("next-auth.session-token", "", expireOpts("lax"));
+  cookieStore.set("__Secure-next-auth.session-token", "", expireOpts("lax"));
+  cookieStore.set("authjs.session-token", "", expireOpts("lax"));
+  cookieStore.set("__Secure-authjs.session-token", "", expireOpts("lax"));
 }
 
 export async function POST() {
