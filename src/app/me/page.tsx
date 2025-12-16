@@ -1,12 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
 import { prisma } from "../../../lib/prisma";
 import { getUserFromRequest } from "../../../lib/auth/getUserFromRequest";
-import SettingsMenu from "./SettingsMenu";
 import MeContent from "./MeContent";
+import ProfileHeader from "./ProfileHeader";
 
 async function getDashboard(userId: string) {
   try {
@@ -94,49 +92,26 @@ export default async function MePage() {
 
   const dashboard = await getDashboard(user.id);
   const courses = await getCourses(user.id);
+  const safeUser = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    image: user.image,
+    bannerImage: (user as any).bannerImage ?? null,
+  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <div className="max-w-5xl mx-auto">
-        {/* Banner */}
-        <div className="h-44 sm:h-52 bg-gradient-to-r from-purple-500 to-blue-500 rounded-b-3xl relative">
-          <div className="absolute bottom-0 left-4 sm:left-6 translate-y-1/2">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white dark:border-gray-900 overflow-hidden shadow-lg">
-              {user.image ? (
-                <img src={user.image} alt={user.name || "User"} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gray-700 flex items-center justify-center text-white text-2xl font-bold">
-                  {user.name?.[0]?.toUpperCase() || "U"}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         <div className="px-4 sm:px-6 pb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-14 gap-4">
-            <div className="space-y-1">
-              <h1 className="text-2xl font-bold">{user.name || "Your Profile"}</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Creator Dashboard</p>
-              <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300 mt-1">
-                <span>{dashboard.followers} Followers</span>
-                <span>{dashboard.following} Following</span>
-                <span>{dashboard.videosCount} Videos</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="px-4 py-2 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm hover:shadow">
-                Edit Profile
-              </button>
-              <Link
-                href="/upload"
-                className="px-4 py-2 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700"
-              >
-                Upload
-              </Link>
-              <SettingsMenu />
-            </div>
-          </div>
+          <ProfileHeader
+            user={safeUser}
+            stats={{
+              followers: dashboard.followers,
+              following: dashboard.following,
+              videos: dashboard.videosCount,
+            }}
+          />
           <div className="mt-6">
             <MeContent dashboard={dashboard} courses={courses} />
           </div>

@@ -16,6 +16,7 @@ interface Video {
   title: string;
   muxPlaybackId: string | null;
   createdAt: string;
+  partNumber?: number | null;
   course?: { id: string; title: string; averageRating?: number | null; priceAda?: number | null } | null;
   _count?: { likes: number };
   mediaMetadata?: { duration?: number | null };
@@ -35,7 +36,7 @@ export default function VideoGrid() {
         const res = await fetch('/api/videos');
         if (!res.ok) throw new Error('Failed to fetch videos');
         const data: Video[] = await res.json();
-        setVideos(data);
+        setVideos(deduplicateByCourse(data));
       } catch (err) {
         console.error(err);
       } finally {
@@ -312,4 +313,35 @@ function formatDuration(seconds: number | null) {
     return `${h}:${mm}:${ss}`;
   }
   return `${m}:${ss}`;
+}
+
+function deduplicateByCourse(videos: Video[]) {
+  const courseMap = new Map<string, Video>();
+  const singles: Video[] = [];
+
+  const pickPreview = (current: Video | undefined, candidate: Video) => {
+    if (!current) return candidate;
+    const currentPart = current.partNumber ?? Number.POSITIVE_INFINITY;
+    const candidatePart = candidate.partNumber ?? Number.POSITIVE_INFINITY;
+    if (candidatePart !== currentPart) {
+      return candidatePart < currentPart ? candidate : current;
+    }
+    const currentCreated = new Date(current.createdAt).getTime();
+    const candidateCreated = new Date(candidate.createdAt).getTime();
+    return candidateCreated < currentCreated ? candidate : current;
+  };
+
+  for (const video of videos) {
+    const courseId = video.course?.id;
+    if (!courseId) {
+      singles.push(video);
+      continue;
+    }
+    const chosen = pickPreview(courseMap.get(courseId), video);
+    courseMap.set(courseId, chosen);
+  }
+
+  return [...singles, ...courseMap.values()].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }

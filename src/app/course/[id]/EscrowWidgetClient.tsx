@@ -9,6 +9,8 @@ type Props = {
   priceAda: number | null;
   initialGrossAda?: number | null;
   showFaucetLink?: boolean;
+  courseTitle: string;
+  authorName: string | null;
 };
 
 export default function EscrowWidgetClient(props: Props) {

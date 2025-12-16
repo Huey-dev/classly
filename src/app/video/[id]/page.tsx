@@ -11,7 +11,7 @@ async function getVideo(id: string) {
     where: { id },
     include: {
       author: { select: { id: true, name: true, image: true } },
-      course: { select: { id: true, title: true, description: true, userId: true } },
+      course: { select: { id: true, title: true, description: true, userId: true, isPaid: true, priceAda: true } },
       mediaMetadata: { select: { duration: true } },
       _count: { select: { likes: true } },
     },
@@ -36,10 +36,10 @@ async function getVideo(id: string) {
       id: true,
       title: true,
       muxPlaybackId: true,
+      partNumber: true,
       mediaMetadata: { select: { duration: true } },
     },
-    orderBy: { createdAt: "asc" },
-    take: 8,
+    orderBy: [{ partNumber: "asc" }, { createdAt: "asc" }],
   });
 
   return { video, related, followers: followerUsers.length };
@@ -69,6 +69,7 @@ export default async function WatchPage({ params }: Props) {
       video={serializeVideo(video, followers)}
       related={serializeRelated(related)}
       enrolled={enrolled}
+      previewLessonId={video.courseId ? related[0]?.id ?? video.id : null}
     />
   );
 }
@@ -88,6 +89,7 @@ function serializeVideo(video: any, followerCount: number) {
     partNumber: video.partNumber ?? null,
     followerCount,
     courseTitle: video.course?.title ?? null,
+    isPaidCourse: Boolean(video.course?.isPaid),
   };
 }
 
@@ -97,5 +99,6 @@ function serializeRelated(related: any[]) {
     title: r.title,
     muxPlaybackId: r.muxPlaybackId,
     duration: r.mediaMetadata?.duration ?? null,
+    partNumber: r.partNumber ?? null,
   }));
 }

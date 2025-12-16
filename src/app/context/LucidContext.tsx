@@ -8,10 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  LucidEvolution,
-  Lucid as LucidInstance,
-} from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 interface LucidContextType {
   lucid: LucidEvolution | null;
@@ -41,6 +38,29 @@ const LucidContext = createContext<LucidContextType>({
 
 const STORAGE_KEY = "classly_dev_wallet_seed";
 const ADDRESS_KEY = "classly_wallet_address";
+const BLOCKFROST_NETWORK = (process.env.NEXT_PUBLIC_NETWORK || "preview").toLowerCase();
+const BLOCKFROST_BASE =
+  BLOCKFROST_NETWORK.includes("preprod")
+    ? "https://cardano-preprod.blockfrost.io/api/v0"
+    : BLOCKFROST_NETWORK.includes("mainnet")
+    ? "https://cardano-mainnet.blockfrost.io/api/v0"
+    : "https://cardano-preview.blockfrost.io/api/v0";
+const BLOCKFROST_LUCID_NETWORK = BLOCKFROST_NETWORK.includes("preprod")
+  ? "Preprod"
+  : BLOCKFROST_NETWORK.includes("mainnet")
+  ? "Mainnet"
+  : "Preview";
+
+const isAddressUnseenError = (err: any) => {
+  const status = err?.status_code ?? err?.status ?? err?.response?.status;
+  const msg = (err?.message || "").toLowerCase();
+  return status === 404 || msg.includes("component has not been found");
+};
+const isNetworkMismatch = (err: any) => {
+  const status = err?.status_code ?? err?.status ?? err?.response?.status;
+  const msg = (err?.message || "").toLowerCase();
+  return status === 403 || msg.includes("network token mismatch");
+};
 
 export function LucidProvider({ children }: { children: ReactNode }) {
   const [lucid, setLucid] = useState<LucidEvolution | null>(null);
@@ -50,118 +70,107 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lucidInstance, setLucidInstance] = useState<LucidEvolution | null>(
-    null
-  );
-  // Get Blockfrost API key
+
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
-  const STORAGE_KEY = "classly_dev_wallet_seed";
-  /**
-   * Main initialization effect - runs once on mount and whenever BF_KEY changes
-   * This is the "all-in-one" pattern you're looking for
-   */
+
+  const fetchAndSetBalance = useCallback(
+    async (client: LucidEvolution) => {
+      try {
+        const utxos = await client.wallet().getUtxos();
+        if (!Array.isArray(utxos) || utxos.length === 0) {
+          setBalance(0);
+          setError("Wallet not yet on-chain. Fund from faucet, then refresh.");
+          return;
+        }
+
+        const total = utxos.reduce((sum, u) => {
+          const raw = u.assets?.lovelace ?? 0;
+          let lovelace: bigint;
+          try {
+            if (typeof raw === "bigint") lovelace = raw;
+            else if (typeof raw === "number") lovelace = BigInt(raw);
+            else if (typeof raw === "string") lovelace = BigInt(raw);
+            else lovelace = BigInt(0);
+          } catch {
+            lovelace = BigInt(0);
+          }
+          return sum + lovelace;
+        }, BigInt(0));
+
+        const ada = Number(total) / 1_000_000;
+        setBalance(Number(ada.toFixed(6)));
+        setError(null);
+      } catch (err: any) {
+        if (isNetworkMismatch(err)) {
+          setBalance(null);
+          setError(
+            "Blockfrost rejected the request. Ensure NEXT_PUBLIC_BLOCKFROST_API_KEY matches the selected network (preview vs preprod)."
+          );
+        } else if (isAddressUnseenError(err)) {
+          setBalance(0);
+          setError("Wallet not yet on-chain. Send test ADA from faucet, then refresh.");
+        } else {
+          console.error("Failed to fetch balance:", err);
+          setBalance(0);
+          setError(err?.message ?? "Failed to fetch balance");
+        }
+      }
+    },
+    []
+  );
+
   useEffect(() => {
-    // Skip on server-side
     if (typeof window === "undefined") {
-      console.log("⚠️ Running on server - skipping wallet init");
       return;
     }
 
-    // IIFE (Immediately Invoked Function Expression) for async inside useEffect
     (async () => {
       try {
-        console.log("🚀 Starting wallet initialization...");
-
-        // Check if API key exists
         if (!BF_KEY || BF_KEY.length === 0) {
           throw new Error(
-            "NEXT_PUBLIC_BLOCKFROST_API_KEY is not set.\n\n" +
-              "Add it to your .env.local file:\n" +
-              "NEXT_PUBLIC_BLOCKFROST_API_KEY=preprodYourKeyHere\n\n" +
-              "Then restart your dev server."
+            "NEXT_PUBLIC_BLOCKFROST_API_KEY is not set. Add it to your .env.local and restart dev server."
           );
         }
 
-        console.log("✅ API key found:", BF_KEY.substring(0, 10) + "...");
+        const { Lucid, Blockfrost, generateSeedPhrase } = await import("@lucid-evolution/lucid");
 
-        // Dynamic import of Lucid modules (critical for Next.js + WASM)
-        console.log("📦 Importing Lucid Evolution...");
-        const { Lucid, Blockfrost, generateSeedPhrase } = await import(
-          "@lucid-evolution/lucid"
-        );
-        console.log("✅ Lucid modules imported");
-
-        // Get or generate seed phrase
         let seed = localStorage.getItem(STORAGE_KEY);
         let isNewWallet = false;
 
         if (!seed) {
-          console.log("🆕 Generating NEW wallet...");
           seed = generateSeedPhrase();
           localStorage.setItem(STORAGE_KEY, seed);
           isNewWallet = true;
-          console.log("✅ New seed phrase generated and saved");
-        } else {
-          console.log("♻️ Loaded EXISTING wallet from localStorage");
         }
 
         setSeedPhrase(seed);
 
-        // Initialize Lucid with Blockfrost
-        // Initialize Lucid
-        const lucid = await Lucid(
-          new Blockfrost(
-            "https://cardano-preprod.blockfrost.io/api/v0",
-            BF_KEY || ""
-          ),
-          "Preprod"
-        );
-        setLucidInstance(lucid);
-        setLucid(lucid); // make lucid available to consumers
-        console.log("✅ Lucid instance created");
+        const lucidClient = await Lucid(new Blockfrost(BLOCKFROST_BASE, BF_KEY || ""), BLOCKFROST_LUCID_NETWORK);
+        setLucid(lucidClient);
 
-        // Select wallet from seed phrase
-        lucid.selectWallet.fromSeed(seed);
-        console.log("✅ Wallet selected from seed phrase");
+        lucidClient.selectWallet.fromSeed(seed);
 
-        // Get wallet address
-        const addr = await lucid.wallet().address();
-        console.log("📬 Wallet address:", addr);
+        const addr = await lucidClient.wallet().address();
         setWalletAddress(addr);
         localStorage.setItem(ADDRESS_KEY, addr);
 
-        // Fetch balance
-        console.log("💰 Fetching wallet balance...");
-        try {
-          const utxos = await lucid.wallet().getUtxos();
-          const total = utxos.reduce(
-            (sum, u) => sum + BigInt(u.assets?.lovelace || 0),
-            BigInt(0)
-          );
-          const ada = Number(total) / 1_000_000;
-          setBalance(Number(ada.toFixed(6)));
-        } catch (e) {
-          console.error("⚠️ Error fetching balance:", e);
-          setBalance(0);
-        }
+        await fetchAndSetBalance(lucidClient);
 
-        // Success!
         setLoading(false);
         setError(null);
 
         if (isNewWallet) {
-          console.log("🎉 New wallet created successfully!");
-          console.log("⚠️ IMPORTANT: Save your seed phrase in a safe place!");
-        } else {
-          console.log("🎉 Wallet restored successfully!");
+          console.log("New wallet created.");
         }
       } catch (err: any) {
-        console.error("❌ Wallet initialization failed:", err);
-        console.error("Error name:", err?.name);
-        console.error("Error message:", err?.message);
-        console.error("Error stack:", err?.stack);
-
-        setError(err?.message ?? "Failed to initialize wallet");
+        console.error("Wallet initialization failed:", err);
+        if (isNetworkMismatch(err)) {
+          setError(
+            "Blockfrost forbidden: token/network mismatch. Set NEXT_PUBLIC_BLOCKFROST_NETWORK to match your token (preview or preprod)."
+          );
+        } else {
+          setError(err?.message ?? "Failed to initialize wallet");
+        }
         setLucid(null);
         setWalletAddress(null);
         setBalance(null);
@@ -169,77 +178,36 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
-  }, [BF_KEY]); // Re-run if BF_KEY changes
+  }, [BF_KEY, fetchAndSetBalance]);
 
-  /**
-   * Manual refresh balance function
-   */
   const refreshBalance = useCallback(async () => {
     if (!lucid) {
-      console.warn("⚠️ Cannot refresh balance - Lucid not initialized");
+      console.warn("Cannot refresh balance - Lucid not initialized");
       return;
     }
 
-    try {
-      console.log("🔄 Refreshing balance...");
-      const utxos = await lucid.wallet().getUtxos();
+    await fetchAndSetBalance(lucid);
+  }, [fetchAndSetBalance, lucid]);
 
-      if (!utxos || utxos.length === 0) {
-        setBalance(0);
-        return;
-      }
-
-      const totalLovelace = utxos.reduce((sum, utxo) => {
-        const lovelace = utxo.assets?.lovelace;
-        if (lovelace === undefined || lovelace === null) return sum;
-
-        if (typeof lovelace === "bigint") return sum + lovelace;
-        if (typeof lovelace === "number") return sum + BigInt(lovelace);
-        if (typeof lovelace === "string") return sum + BigInt(lovelace);
-
-        return sum;
-      }, BigInt(0));
-
-      const adaBalance = Number(totalLovelace) / 1_000_000;
-      console.log("✅ Balance refreshed:", adaBalance, "ADA");
-      setBalance(adaBalance);
-    } catch (err: any) {
-      console.error("❌ Failed to refresh balance:", err);
-      setError(err?.message ?? "Failed to refresh balance");
-    }
-  }, [lucid]);
-
-  /**
-   * Manual connect wallet (in case user wants to reconnect)
-   */
   const connectWallet = useCallback(async () => {
+    setConnecting(true);
     setLoading(true);
     setError(null);
-    // Trigger re-initialization by forcing component update
     window.location.reload();
   }, []);
 
-  /**
-   * Disconnect wallet and clear all data
-   */
   const disconnectWallet = useCallback(() => {
-    console.log("👋 Disconnecting wallet...");
-
     setWalletAddress(null);
     setBalance(null);
     setLucid(null);
     setSeedPhrase(null);
     setError(null);
 
-    // Clear localStorage
     if (typeof window !== "undefined") {
       localStorage.removeItem(ADDRESS_KEY);
       localStorage.removeItem(STORAGE_KEY);
     }
 
-    console.log("✅ Wallet disconnected and cleared");
-
-    // Reload page to reinitialize
     window.location.reload();
   }, []);
 

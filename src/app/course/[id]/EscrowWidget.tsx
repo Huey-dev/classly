@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Data } from "@lucid-evolution/lucid";
 import {
   calculateNetAmount,
@@ -14,6 +15,19 @@ import {
 } from "../../lib/contracts";
 import { computeAddPaymentTransition, disputeCountdown, normalizePkh } from "../../lib/escrow-utils";
 import { useLucid } from "../../context/LucidContext";
+
+const formatCountdown = (val: any) => {
+  if (!val) return "—";
+  if (typeof val === "string" || typeof val === "number") return String(val);
+  if (typeof val === "object") {
+    const d = val.days ?? 0;
+    const h = val.hours ?? 0;
+    const m = val.minutes ?? 0;
+    const s = val.seconds ?? 0;
+    return `${d}d ${h}h ${m}m ${s}s`;
+  }
+  return "—";
+};
 
 type EscrowState = {
   id: string;
@@ -43,6 +57,8 @@ type Props = {
   priceAda: number | null;
   initialGrossAda?: number | null;
   showFaucetLink?: boolean;
+  courseTitle: string;
+  authorName: string | null;
 };
 
 async function fetchEscrow(courseId: string): Promise<EscrowState | null> {
@@ -63,8 +79,18 @@ async function syncEscrow(courseId: string, data: Partial<EscrowState>) {
   });
 }
 
-export function EscrowWidget({ courseId, isOwner, isPaid, priceAda, initialGrossAda, showFaucetLink = true }: Props) {
+export function EscrowWidget({
+  courseId,
+  isOwner,
+  isPaid,
+  priceAda,
+  initialGrossAda,
+  showFaucetLink = true,
+  courseTitle,
+  authorName,
+}: Props) {
   const { lucid, walletAddress, loading, error, connectWallet, balance } = useLucid();
+  const router = useRouter();
   const [escrow, setEscrow] = useState<EscrowState | null>(null);
   const [grossAda, setGrossAda] = useState(initialGrossAda ?? priceAda ?? 1);
   const [receiverAddress, setReceiverAddress] = useState<string>("");
@@ -191,6 +217,7 @@ export function EscrowWidget({ courseId, isOwner, isPaid, priceAda, initialGross
       await fetch(`/api/courses/${courseId}/enroll`, { method: "POST" }).catch(() => {});
       const updated = await fetchEscrow(courseId);
       setEscrow(updated);
+      router.push(`/course/${courseId}?paid=1`);
     } catch (e: any) {
       setLastError(e?.message || "Failed to create escrow");
     } finally {
@@ -199,34 +226,31 @@ export function EscrowWidget({ courseId, isOwner, isPaid, priceAda, initialGross
   };
 
   const handleAddPayment = async () => {
-    if (!lucid) {
-      await connectWallet();
-      return;
-    }
-    if (!escrow?.scriptAddress) {
-      setLastError("No escrow script address found");
-      return;
-    }
+    if (!lucid || !escrow) return;
     setSubmitting(true);
     setLastError(null);
     setTxHash(null);
     try {
-      const scriptAddress = escrow.scriptAddress as string;
-      const utxos = await lucid.utxosAt(scriptAddress);
-      const targetUtxo = utxos.find((u: any) => {
-        if (!u.datum) return false;
-        try {
-          const d = Data.from(u.datum, EscrowDatumSchema) as unknown as EscrowDatum;
-          return escrow.receiverPkh ? d.receiver === escrow.receiverPkh : true;
-        } catch {
-          return false;
-        }
-      });
-      if (!targetUtxo) {
-        throw new Error("Escrow UTXO not found on-chain");
-      }
-
-      const currentDatum = Data.from(targetUtxo.datum as string, EscrowDatumSchema) as unknown as EscrowDatum;
+      const validatorScript = await getEscrowValidator();
+      const validator = { type: "PlutusV3", script: validatorScript } as const;
+      const scriptAddr = escrow.scriptAddress || (await getEscrowAddress(lucid, resolveNetwork()));
+      const utxos = await lucid.utxosAt(scriptAddr);
+      const currentDatum: EscrowDatum = {
+        receiver: escrow.receiverPkh || "",
+        oracle: escrow.oraclePkh || "",
+        netTotal: BigInt(escrow.netTotal ?? 0),
+        paidCount: BigInt(escrow.paidCount ?? 0),
+        paidOut: BigInt(escrow.paidOut ?? 0),
+        released30: !!escrow.released30,
+        released40: !!escrow.released40,
+        releasedFinal: !!escrow.releasedFinal,
+        comments: BigInt(escrow.comments ?? 0),
+        ratingSum: BigInt(escrow.ratingSum ?? 0),
+        ratingCount: BigInt(escrow.ratingCount ?? 0),
+        allWatchMet: !!escrow.allWatchMet,
+        firstWatch: BigInt(escrow.firstWatch ?? 0),
+        disputeBy: BigInt(escrow.disputeBy ?? 0),
+      };
       const { newDatum, immediatePayout } = computeAddPaymentTransition(currentDatum, netLovelace, {
         watchMet,
         ratingX10,
@@ -243,57 +267,38 @@ export function EscrowWidget({ courseId, isOwner, isPaid, priceAda, initialGross
           firstWatchAt: BigInt(firstWatchAt),
         },
       };
-
-      const validatorScript = await getEscrowValidator();
-      const validator = { type: "PlutusV3" as const, script: validatorScript };
-      const payoutAddress =
-        receiverAddress && receiverAddress.startsWith("addr")
-          ? receiverAddress
-          : walletAddress || (await lucid.wallet().address());
-
-      const txBuilder = lucid
+      const tx = await lucid
         .newTx()
-        .collectFrom([targetUtxo], Data.to(redeemer as any, EscrowRedeemerSchema))
+        .collectFrom(utxos, Data.to(redeemer as any, EscrowRedeemerSchema))
         .attach.SpendingValidator(validator)
-        .addSigner(payoutAddress);
-
-      if (immediatePayout > 0n) {
-        txBuilder.pay.ToAddress(payoutAddress, { lovelace: immediatePayout });
-      }
-
-      const tx = await txBuilder
         .pay.ToContract(
-          scriptAddress,
+          scriptAddr,
           { kind: "inline", value: Data.to(newDatum as any, EscrowDatumSchema) },
           { lovelace: newDatum.netTotal }
         )
-        .complete({ setCollateral: 5_000_000n });
+        .complete();
 
       const signed = await tx.sign.withWallet().complete();
       const hash = await signed.submit();
       setTxHash(hash);
-
       await syncEscrow(courseId, {
-        scriptAddress,
-        receiverPkh: escrow.receiverPkh,
-        oraclePkh: escrow.oraclePkh,
         netTotal: newDatum.netTotal.toString(),
         paidCount: Number(newDatum.paidCount),
-        paidOut: newDatum.paidOut?.toString?.() || "0",
         released30: newDatum.released30,
         released40: newDatum.released40,
         releasedFinal: newDatum.releasedFinal,
+        paidOut: newDatum.paidOut.toString(),
         comments: Number(newDatum.comments),
         ratingSum: Number(newDatum.ratingSum),
         ratingCount: Number(newDatum.ratingCount),
         allWatchMet: newDatum.allWatchMet,
         firstWatch: Number(newDatum.firstWatch),
         disputeBy: Number(newDatum.disputeBy),
-        status: escrow.status ?? "PENDING",
       });
       await fetch(`/api/courses/${courseId}/enroll`, { method: "POST" }).catch(() => {});
       const updated = await fetchEscrow(courseId);
       setEscrow(updated);
+      router.push(`/course/${courseId}?paid=1`);
     } catch (e: any) {
       setLastError(e?.message || "Failed to add payment");
     } finally {
@@ -302,234 +307,200 @@ export function EscrowWidget({ courseId, isOwner, isPaid, priceAda, initialGross
   };
 
   const handleReleaseFinal = async () => {
-    if (!lucid) {
-      await connectWallet();
-      return;
-    }
-    if (!escrow?.scriptAddress) {
-      setLastError("No escrow script address found");
-      return;
-    }
+    if (!lucid || !escrow) return;
     setSubmitting(true);
     setLastError(null);
     setTxHash(null);
     try {
-      const scriptAddress = escrow.scriptAddress as string;
-      const utxos = await lucid.utxosAt(scriptAddress);
-      const targetUtxo = utxos.find((u: any) => !!u.datum);
-      if (!targetUtxo) throw new Error("Escrow UTXO not found");
-
-      const currentDatum = Data.from(targetUtxo.datum as string, EscrowDatumSchema) as unknown as EscrowDatum;
-      const payout = currentDatum.netTotal;
-      const remainingSeconds = disputeCountdown(currentDatum.disputeBy).seconds;
-      if (remainingSeconds > 0) {
-        throw new Error(`Cannot release final yet. ${remainingSeconds} seconds remaining in dispute window.`);
-      }
-      const newDatum: EscrowDatum = {
-        ...currentDatum,
-        netTotal: 0n,
-        paidOut: (currentDatum.paidOut ?? 0n) + payout,
-        released40: true,
-        releasedFinal: true,
-      };
-
-      const redeemer = Data.to("ReleaseFinal" as any, EscrowRedeemerSchema);
       const validatorScript = await getEscrowValidator();
-      const validator = { type: "PlutusV3" as const, script: validatorScript };
-      const receiverAddr =
-        receiverAddress && receiverAddress.startsWith("addr")
-          ? receiverAddress
-          : walletAddress || (await lucid.wallet().address());
-
+      const validator = { type: "PlutusV3", script: validatorScript } as const;
+      const scriptAddr = escrow.scriptAddress || (await getEscrowAddress(lucid, resolveNetwork()));
+      const utxos = await lucid.utxosAt(scriptAddr);
+      const datum = escrow;
+      const redeemer: EscrowRedeemer = "ReleaseFinal";
       const tx = await lucid
         .newTx()
-        .validFrom(Number(currentDatum.disputeBy ?? 0n))
-        .collectFrom([targetUtxo], redeemer)
+        .collectFrom(utxos, Data.to(redeemer as any, EscrowRedeemerSchema))
         .attach.SpendingValidator(validator)
-        .addSigner(receiverAddr)
-        .pay.ToAddress(receiverAddr, { lovelace: payout })
-        .pay.ToContract(
-          scriptAddress,
-          { kind: "inline", value: Data.to(newDatum as any, EscrowDatumSchema) },
-          { lovelace: newDatum.netTotal }
-        )
-        .complete({ setCollateral: 5_000_000n });
-
+        .pay.ToAddress(walletAddress!, { lovelace: BigInt(datum.netTotal || "0") })
+        .complete();
       const signed = await tx.sign.withWallet().complete();
       const hash = await signed.submit();
       setTxHash(hash);
-
       await syncEscrow(courseId, {
-        scriptAddress,
-        receiverPkh: escrow.receiverPkh,
-        oraclePkh: escrow.oraclePkh,
-        netTotal: newDatum.netTotal.toString(),
-        paidCount: Number(newDatum.paidCount ?? currentDatum.paidCount),
-        paidOut: newDatum.paidOut?.toString?.() || "0",
-        released30: newDatum.released30,
-        released40: newDatum.released40,
-        releasedFinal: newDatum.releasedFinal,
-        comments: Number(newDatum.comments ?? currentDatum.comments ?? 0),
-        ratingSum: Number(newDatum.ratingSum ?? currentDatum.ratingSum ?? 0),
-        ratingCount: Number(newDatum.ratingCount ?? currentDatum.ratingCount ?? 0),
-        allWatchMet: newDatum.allWatchMet ?? currentDatum.allWatchMet,
-        firstWatch: Number(newDatum.firstWatch ?? currentDatum.firstWatch ?? 0),
-        disputeBy: Number(newDatum.disputeBy ?? currentDatum.disputeBy ?? 0),
         status: "RELEASED",
+        releasedFinal: true,
+        paidOut: datum.netTotal,
       });
       const updated = await fetchEscrow(courseId);
       setEscrow(updated);
+      router.push(`/course/${courseId}?paid=1`);
     } catch (e: any) {
-      setLastError(e?.message || "Failed to release final");
+      setLastError(e?.message || "Failed to release final funds");
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!isPaid) return null;
+  const refreshEscrow = async () => {
+    const updated = await fetchEscrow(courseId);
+    setEscrow(updated);
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white shadow-lg p-4 sm:p-6">
+        <p className="text-sm text-slate-600">Initializing wallet...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-3xl border border-red-200 bg-red-50 shadow-lg p-4 sm:p-6 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="space-y-1">
-          <p className="text-sm font-semibold">Pay & Unlock (Preprod demo)</p>
-          <p className="text-xs text-slate-500">
-            Connect wallet, lock funds, and track payouts in real time.
-          </p>
-          {showFaucetLink && (
-            <a
-              href="https://docs.cardano.org/cardano-testnet/tools/faucet/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-blue-600 hover:underline"
-            >
-              Need test ADA? Get it from the Preprod faucet.
-            </a>
-          )}
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          {typeof balance === "number" && (
-            <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-              Balance: {balance.toFixed(4)} ADA
-            </span>
-          )}
-          {walletAddress ? (
-            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
-              Wallet: {walletAddress.slice(0, 10)}...
-            </span>
-          ) : (
-            <button
-              onClick={() => connectWallet()}
-              className="text-xs px-3 py-1 rounded-lg bg-blue-600 text-white"
-            >
-              Connect wallet
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="flex justify-center px-4">
+      <div className="w-full max-w-3xl">
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-lg p-4 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="w-full">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-xs uppercase font-semibold text-slate-500 tracking-wide">Checkout</p>
+                <div className="flex items-center gap-2 text-xs text-slate-600">
+                  {typeof balance === "number" && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                      Balance: {balance.toFixed(4)} ADA
+                    </span>
+                  )}
+                  {walletAddress && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 truncate max-w-[240px]">
+                      Wallet: {walletAddress}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <h2 className="text-lg font-bold text-slate-900">{courseTitle}</h2>
+                <p className="text-sm text-slate-600">Instructor: {authorName || "Unknown"}</p>
+                <p className="text-sm text-slate-700 mt-1">Price: {(priceAda ?? grossAda ?? 0).toFixed(2)} ADA</p>
+              </div>
+            </div>
+          </div>
 
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <label className="text-xs font-semibold">Gross ADA</label>
-          <input
-            type="number"
-            min={0}
-            value={grossAda}
-            onChange={(e) => setGrossAda(Number(e.target.value))}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          />
-          <div className="flex items-center gap-3 text-xs text-slate-600">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={watchMet} onChange={(e) => setWatchMet(e.target.checked)} />
-              Watch met
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={commented} onChange={(e) => setCommented(e.target.checked)} />
-              Commented
-            </label>
-          </div>
-          <label className="text-xs font-semibold">Rating x10</label>
-          <input
-            type="number"
-            value={ratingX10}
-            onChange={(e) => setRatingX10(Number(e.target.value))}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          />
-          <label className="text-xs font-semibold">First watch at (epoch secs)</label>
-          <input
-            type="number"
-            value={firstWatchAt}
-            onChange={(e) => setFirstWatchAt(Number(e.target.value))}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-          />
-          <label className="text-xs font-semibold">Payout address (defaults to your wallet)</label>
-          <input
-            type="text"
-            value={receiverAddress}
-            onChange={(e) => setReceiverAddress(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2 text-sm"
-            placeholder="addr_test..."
-          />
-          <div className="text-xs text-slate-600 space-y-1">
-            <p>Platform fee (7%): {(Number(feeLovelace) / 1_000_000).toFixed(4)} ADA</p>
-            <p>Net to escrow: {(Number(netLovelace) / 1_000_000).toFixed(4)} ADA</p>
-            <p>Immediate payout from this payment: {(Number(immediatePayoutPreview) / 1_000_000).toFixed(4)} ADA</p>
-            <p>Remaining to reach 5 enrollments: {remainingToFive}</p>
-          </div>
-        </div>
+          {lastError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm">{lastError}</div>
+          )}
 
-        <div className="space-y-2">
-          <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-            {escrow ? (
-              <>
-                <p>Status: {escrow.status ?? "N/A"}</p>
-                <p>Net Total: {escrow.netTotal ?? "0"}</p>
-                <p>Paid Out: {escrow.paidOut ?? "0"}</p>
-                <p>Paid Count: {escrow.paidCount ?? 0}</p>
-                <p>Released30: {escrow.released30 ? "yes" : "no"}</p>
-                <p>Released40: {escrow.released40 ? "yes" : "no"}</p>
-              </>
-            ) : (
-              <p>No escrow on record</p>
-            )}
-            {txHash && <p className="text-emerald-600 break-all">Tx: {txHash}</p>}
-            {lastError && <p className="text-red-600">{lastError}</p>}
-            {error && <p className="text-red-600">{error}</p>}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div className="grid sm:grid-cols-3 gap-3 text-sm">
+              <div>
+                <p className="text-slate-500">Course price</p>
+                <p className="text-lg font-semibold">{(priceAda ?? grossAda ?? 0).toFixed(2)} ADA</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Platform fee (7%)</p>
+                <p className="text-lg font-semibold text-amber-700">{((grossAda ?? 0) * 0.07).toFixed(3)} ADA</p>
+              </div>
+              <div>
+                <p className="text-slate-500">Net to instructor</p>
+                <p className="text-lg font-semibold text-emerald-700">{((grossAda ?? 0) * 0.93).toFixed(3)} ADA</p>
+              </div>
+            </div>
+            <div className="text-xs text-slate-600">
+              Funds lock into escrow. After successful payment you will be enrolled and redirected to the course page.
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleCreate}
-              disabled={submitting}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-white text-sm disabled:opacity-60"
-            >
-              Create & Lock
-            </button>
-            <button
-              onClick={handleAddPayment}
-              disabled={submitting}
-              className="rounded-lg bg-emerald-600 px-3 py-2 text-white text-sm disabled:opacity-60"
-            >
-              Add Payment
-            </button>
-            <button
-              onClick={handleReleaseFinal}
-              disabled={submitting}
-              className="rounded-lg bg-purple-600 px-3 py-2 text-white text-sm disabled:opacity-60"
-            >
-              Release Final
-            </button>
-            <button
-              onClick={() => fetchEscrow(courseId).then(setEscrow)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              Refresh
-            </button>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-slate-600">Your payout address (defaults to your wallet)</p>
+              <input
+                type="text"
+                value={receiverAddress}
+                onChange={(e) => setReceiverAddress(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                placeholder="addr_test..."
+              />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-600">Gross ADA</p>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={grossAda ?? ""}
+                  onChange={(e) => setGrossAda(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-600">Rating x10</p>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={ratingX10}
+                  onChange={(e) => setRatingX10(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="0 - 100"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={watchMet} onChange={(e) => setWatchMet(e.target.checked)} />
+                Watch met
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={commented} onChange={(e) => setCommented(e.target.checked)} />
+                Commented
+              </label>
+            </div>
           </div>
-          {escrow?.disputeBy ? (
-            <p className="text-xs text-slate-500">
-              Final release window: {disputeTimer.days}d {disputeTimer.hours}h {disputeTimer.minutes}m remaining
-            </p>
-          ) : null}
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-sm text-slate-700 space-y-1">
+              <div className="font-semibold">Status: {escrow?.status || "PENDING"}</div>
+              <div className="text-xs text-slate-500">Net Total: {escrow?.netTotal || 0}</div>
+              <div className="text-xs text-slate-500">Paid Count: {escrow?.paidCount || 0}</div>
+              <div className="text-xs text-slate-500">Final release window: {formatCountdown(disputeTimer)}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleCreate}
+                disabled={submitting || !walletAddress}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold disabled:opacity-60"
+              >
+                {submitting ? "Processing..." : "Pay & Lock"}
+              </button>
+              <button
+                onClick={handleAddPayment}
+                disabled={submitting || !walletAddress}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-60"
+              >
+                {submitting ? "Processing..." : "Add Payment"}
+              </button>
+              <button
+                onClick={handleReleaseFinal}
+                disabled={submitting || !walletAddress}
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-60"
+              >
+                {submitting ? "Processing..." : "Release Final"}
+              </button>
+              <button
+                onClick={refreshEscrow}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-semibold"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

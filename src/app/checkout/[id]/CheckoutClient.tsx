@@ -105,6 +105,17 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       setLastError('You cannot enroll in your own course.');
       return;
     }
+    try {
+      const meRes = await fetch('/api/me');
+      const meJson = meRes.ok ? await meRes.json() : null;
+      if (!meRes.ok || !meJson?.id) {
+        setLastError('Please sign in before paying and enrolling.');
+        return;
+      }
+    } catch {
+      setLastError('Please sign in before paying and enrolling.');
+      return;
+    }
 
     setSubmitting(true);
     setLastError(null);
@@ -177,7 +188,7 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       await lucid.awaitTx(hash);
 
       // 7. Record the payment off‑chain via /api/escrow/create
-      await fetch('/api/escrow/create', {
+      const createRes = await fetch('/api/escrow/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,9 +196,13 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
           netAmount: datum.netTotal.toString(),
         }),
       });
+      if (createRes.status === 401) throw new Error('Please sign in before paying for this course.');
+      if (!createRes.ok) throw new Error('Failed to record payment. Your on-chain tx is submitted; contact support.');
 
       // 8. Enroll the student (idempotent)
-      await fetch(`/api/courses/${courseId}/enroll`, { method: 'POST' });
+      const enrollRes = await fetch(`/api/courses/${courseId}/enroll`, { method: 'POST' });
+      if (enrollRes.status === 401) throw new Error('Please sign in to complete enrollment.');
+      if (!enrollRes.ok) throw new Error('Payment recorded but enrollment failed. Please contact support.');
 
       // 9. Redirect to the course page
       router.push(`/course/${courseId}?paid=1&tx=${hash}`);

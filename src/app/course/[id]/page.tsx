@@ -174,6 +174,8 @@ export default async function CoursePage({
             isPaid={!isFree}
             priceAda={priceAdaNumber}
             initialGrossAda={priceAdaNumber}
+            courseTitle={course.title}
+            authorName={course.author.name}
           />
         )}
         {showClaimNft && (

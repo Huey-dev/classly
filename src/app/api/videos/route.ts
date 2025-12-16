@@ -58,7 +58,35 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json(enriched);
+    // Only surface a single preview video per course (prefer the first part)
+    const coursePreviewMap = new Map<string, typeof enriched[number]>();
+    const standalone: typeof enriched[number][] = [];
+
+    const pickBetter = (current: typeof enriched[number] | undefined, candidate: typeof enriched[number]) => {
+      if (!current) return candidate;
+      const currentPart = current.partNumber ?? Number.POSITIVE_INFINITY;
+      const candidatePart = candidate.partNumber ?? Number.POSITIVE_INFINITY;
+      if (candidatePart !== currentPart) {
+        return candidatePart < currentPart ? candidate : current;
+      }
+      return candidate.createdAt < current.createdAt ? candidate : current;
+    };
+
+    for (const video of enriched) {
+      const courseId = video.course?.id;
+      if (!courseId) {
+        standalone.push(video);
+        continue;
+      }
+      const chosen = pickBetter(coursePreviewMap.get(courseId), video);
+      coursePreviewMap.set(courseId, chosen);
+    }
+
+    const deduped = [...standalone, ...coursePreviewMap.values()].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+    );
+
+    return NextResponse.json(deduped);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P1001') {
       console.error('Database unreachable for /api/videos:', err.message);

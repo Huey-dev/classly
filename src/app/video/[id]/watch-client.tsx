@@ -33,11 +33,13 @@ type Video = {
 
   courseTitle?: string | null;
 
+  isPaidCourse?: boolean;
+
 };
 
 
 
-type Related = { id: string; title: string; muxPlaybackId: string | null; duration: number | null }[];
+type Related = { id: string; title: string; muxPlaybackId: string | null; duration: number | null; partNumber: number | null }[];
 
 
 
@@ -48,7 +50,17 @@ const isLikelyPlaybackId = (id?: string | null) =>
 
 
 
-export default function WatchClient({ video, related, enrolled }: { video: Video; related: Related; enrolled: boolean }) {
+export default function WatchClient({
+
+  video,
+
+  related,
+
+  enrolled,
+
+  previewLessonId: previewLessonIdProp,
+
+}: { video: Video; related: Related; enrolled: boolean; previewLessonId?: string | null }) {
 
   const [likes, setLikes] = useState(video.likes);
 
@@ -68,15 +80,27 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
   const [isEnrolled, setIsEnrolled] = useState(enrolled);
 
+  const [playlistOpen, setPlaylistOpen] = useState(true);
 
+  const isPaidCourse = Boolean(video.courseId && video.isPaidCourse);
 
   const sortedRelated = useMemo(() => {
+    return [...related].sort((a, b) => {
+      const aPart = a.partNumber ?? Number.POSITIVE_INFINITY;
+      const bPart = b.partNumber ?? Number.POSITIVE_INFINITY;
+      if (aPart !== bPart) return aPart - bPart;
+      return a.title.localeCompare(b.title);
+    });
+  }, [related]);
 
-    if (!video.partNumber) return related;
+  const previewLessonId = useMemo(
+    () => previewLessonIdProp ?? sortedRelated[0]?.id ?? video.id,
+    [previewLessonIdProp, sortedRelated, video.id]
+  );
 
-    return [...related].sort((a, b) => (a.duration ?? 0) - (b.duration ?? 0));
+  const isLocked = isPaidCourse && !isEnrolled && video.id !== previewLessonId;
 
-  }, [related, video.partNumber]);
+  const isPreviewLesson = isPaidCourse && video.id === previewLessonId;
 
 
 
@@ -266,7 +290,7 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
           <div className="rounded-2xl overflow-hidden bg-black shadow-xl">
 
-            {video.courseId && !isEnrolled ? (
+            {isLocked ? (
 
               <div className="aspect-video bg-gradient-to-br from-slate-900 to-slate-700 flex flex-col items-center justify-center text-center p-8 space-y-3">
 
@@ -278,7 +302,7 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
                 <p className="text-sm text-gray-200">
 
-                  Enroll to unlock playback and the rest of the curriculum.
+                  Enroll to unlock this lesson and the rest of the curriculum. The first lesson is available as a free preview.
 
                 </p>
 
@@ -328,25 +352,35 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
               </p>
 
-              {video.courseId && (
+            {video.courseId && (
 
-                <div className="mt-2 flex items-center gap-2 text-sm">
+              <div className="mt-2 flex items-center gap-2 text-sm">
 
-                  <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
+                <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
 
-                    Course
+                  Course
+
+                </span>
+
+                <Link href={`/course/${video.courseId}`} className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+
+                  {video.courseTitle || "View course"}
+
+                </Link>
+
+                {isPreviewLesson && !isEnrolled && (
+
+                  <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+
+                    Preview lesson - free to watch
 
                   </span>
 
-                  <Link href={`/course/${video.courseId}`} className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+                )}
 
-                    {video.courseTitle || "View course"}
+              </div>
 
-                  </Link>
-
-                </div>
-
-              )}
+            )}
 
             </div>
 
@@ -490,61 +524,137 @@ export default function WatchClient({ video, related, enrolled }: { video: Video
 
         <aside className="space-y-4">
 
-          <div className="text-lg font-semibold">Course playlist</div>
+          <div className="flex items-center justify-between gap-3">
 
-          <div className="space-y-3">
+            <div className="text-lg font-semibold">Course playlist</div>
 
-            {sortedRelated.length === 0 && (
+            {sortedRelated.length > 0 && (
 
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+              <button
 
-                No other parts in this course yet.
+                onClick={() => setPlaylistOpen((prev) => !prev)}
 
-              </div>
-
-            )}
-
-            {sortedRelated.map((item) => (
-
-              <Link
-
-                key={item.id}
-
-                href={`/video/${item.id}`}
-
-                className="flex gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 font-semibold"
 
               >
 
-                  <div className="w-28 h-16 bg-black rounded-md overflow-hidden flex-shrink-0">
-                    {isLikelyPlaybackId(item.muxPlaybackId) ? (
-                      <img
-                        src={`https://image.mux.com/${item.muxPlaybackId}/thumbnail.jpg?time=1`}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gray-700" />
-                    )}
-                  </div>
+                <span>{playlistOpen ? "Hide" : "Show"}</span>
 
-                <div className="flex-1 min-w-0">
+                {playlistOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
 
-                  <p className="text-sm font-semibold line-clamp-2">{item.title}</p>
+              </button>
 
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+            )}
 
-                    {formatDuration(item.duration)}
+          </div>
 
-                  </p>
+          {playlistOpen && (
+
+            <div className="space-y-3">
+
+              {sortedRelated.length === 0 ? (
+
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+
+                  No other parts in this course yet.
 
                 </div>
 
-              </Link>
+              ) : (
 
-            ))}
+                sortedRelated.map((item) => {
 
-          </div>
+                  const isCurrent = item.id === video.id;
+
+                  const itemLocked = isPaidCourse && !isEnrolled && item.id !== previewLessonId;
+
+                  const badge = itemLocked
+
+                    ? "Paid"
+
+                    : isPaidCourse && item.id === previewLessonId
+
+                    ? "Preview"
+
+                    : null;
+
+                  return (
+
+                    <Link
+
+                      key={item.id}
+
+                      href={`/video/${item.id}`}
+
+                      className={`flex gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition ${
+
+                        isCurrent ? "bg-gray-100/60 dark:bg-gray-800/60" : ""
+
+                      } ${itemLocked ? "opacity-80" : ""}`}
+
+                    >
+
+                        <div className="w-28 h-16 bg-black rounded-md overflow-hidden flex-shrink-0">
+                          {isLikelyPlaybackId(item.muxPlaybackId) ? (
+                            <img
+                              src={`https://image.mux.com/${item.muxPlaybackId}/thumbnail.jpg?time=1`}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-700" />
+                          )}
+                        </div>
+
+                      <div className="flex-1 min-w-0">
+
+                        <p className="text-sm font-semibold line-clamp-2">
+
+                          {item.title}
+
+                        </p>
+
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+
+                          {formatDuration(item.duration)}
+
+                        </p>
+
+                      </div>
+
+                      {badge && (
+
+                        <span
+
+                          className={`text-xs font-semibold px-2 py-1 rounded-full ${
+
+                            badge === "Paid"
+
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+
+                              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+
+                          }`}
+
+                        >
+
+                          {badge}
+
+                        </span>
+
+                      )}
+
+                    </Link>
+
+                  );
+
+                })
+
+              )}
+
+            </div>
+
+          )}
 
         </aside>
 
