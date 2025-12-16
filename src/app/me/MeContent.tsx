@@ -34,7 +34,7 @@ type DashboardCourses = { created: any[]; enrolled: any[] };
 type NftItem = { unit: string; policyId: string; assetName: string; quantity: string };
 
 const FAUCET_URL = "https://docs.cardano.org/cardano-testnet/tools/faucet/";
-const BLOCKFROST_NETWORK = (process.env.NEXT_PUBLIC_BLOCKFROST_NETWORK || "preview").toLowerCase();
+const BLOCKFROST_NETWORK = (process.env.NEXT_PUBLIC_NETWORK || "preview").toLowerCase();
 const BLOCKFROST_BASE =
   BLOCKFROST_NETWORK.includes("preprod")
     ? "https://cardano-preprod.blockfrost.io/api/v0"

@@ -36,8 +36,8 @@ const LucidContext = createContext<LucidContextType>({
   refreshBalance: async () => {},
 });
 
-const STORAGE_KEY = "classly_dev_wallet_seed";
-const ADDRESS_KEY = "classly_wallet_address";
+const STORAGE_KEY_BASE = "classly_dev_wallet_seed";
+const ADDRESS_KEY_BASE = "classly_wallet_address";
 const BLOCKFROST_NETWORK = (process.env.NEXT_PUBLIC_NETWORK || "preview").toLowerCase();
 const BLOCKFROST_BASE =
   BLOCKFROST_NETWORK.includes("preprod")
@@ -70,6 +70,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userKey, setUserKey] = useState<string>("anon");
 
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
 
@@ -124,6 +125,29 @@ export function LucidProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Fetch user id to namespace wallet storage per user
+    (async () => {
+      try {
+        const res = await fetch("/api/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.id) {
+            setUserKey(data.id);
+            return;
+          }
+        }
+      } catch {
+        // ignore and fall back to anon
+      }
+      setUserKey("anon");
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     (async () => {
       try {
         if (!BF_KEY || BF_KEY.length === 0) {
@@ -134,12 +158,15 @@ export function LucidProvider({ children }: { children: ReactNode }) {
 
         const { Lucid, Blockfrost, generateSeedPhrase } = await import("@lucid-evolution/lucid");
 
-        let seed = localStorage.getItem(STORAGE_KEY);
+        const storageKey = `${STORAGE_KEY_BASE}_${userKey}`;
+        const addressKey = `${ADDRESS_KEY_BASE}_${userKey}`;
+
+        let seed = localStorage.getItem(storageKey);
         let isNewWallet = false;
 
         if (!seed) {
           seed = generateSeedPhrase();
-          localStorage.setItem(STORAGE_KEY, seed);
+          localStorage.setItem(storageKey, seed);
           isNewWallet = true;
         }
 
@@ -152,7 +179,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
 
         const addr = await lucidClient.wallet().address();
         setWalletAddress(addr);
-        localStorage.setItem(ADDRESS_KEY, addr);
+        localStorage.setItem(addressKey, addr);
 
         await fetchAndSetBalance(lucidClient);
 
@@ -166,7 +193,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         console.error("Wallet initialization failed:", err);
         if (isNetworkMismatch(err)) {
           setError(
-            "Blockfrost forbidden: token/network mismatch. Set NEXT_PUBLIC_BLOCKFROST_NETWORK to match your token (preview or preprod)."
+            "Blockfrost forbidden: token/network mismatch. Set NEXT_PUBLIC_NETWORK (or NEXT_PUBLIC_BLOCKFROST_NETWORK) to match your token (preview or preprod)."
           );
         } else {
           setError(err?.message ?? "Failed to initialize wallet");
@@ -178,7 +205,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
-  }, [BF_KEY, fetchAndSetBalance]);
+  }, [BF_KEY, fetchAndSetBalance, userKey]);
 
   const refreshBalance = useCallback(async () => {
     if (!lucid) {
@@ -204,12 +231,12 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     if (typeof window !== "undefined") {
-      localStorage.removeItem(ADDRESS_KEY);
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(`${ADDRESS_KEY_BASE}_${userKey}`);
+      localStorage.removeItem(`${STORAGE_KEY_BASE}_${userKey}`);
     }
 
     window.location.reload();
-  }, []);
+  }, [userKey]);
 
   return (
     <LucidContext.Provider

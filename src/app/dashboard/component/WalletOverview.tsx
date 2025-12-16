@@ -5,6 +5,14 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useLucid } from '@/app/context/LucidContext';
 
+const BLOCKFROST_NETWORK =
+  (process.env.NEXT_PUBLIC_NETWORK || process.env.NEXT_PUBLIC_BLOCKFROST_NETWORK || 'preview').toLowerCase();
+const BLOCKFROST_LABEL = BLOCKFROST_NETWORK.includes('preprod')
+  ? 'preprod'
+  : BLOCKFROST_NETWORK.includes('mainnet')
+  ? 'mainnet'
+  : 'preview';
+
 /**
  * WalletOverview shows the currently connected Cardano testnet wallet.
  *
@@ -75,8 +83,7 @@ export default function WalletOverview() {
           <ol className="list-decimal ml-4 space-y-1">
             <li>Copy your wallet address below.</li>
             <li>
-              Open the faucet and choose <strong>{process.env.NEXT_PUBLIC_BLOCKFROST_NETWORK || 'preprod'}</strong>{' '}
-              network:{" "}
+              Open the faucet and choose <strong>{BLOCKFROST_LABEL}</strong> network:{" "}
               <a
                 href="https://docs.cardano.org/cardano-testnet/tools/faucet/"
                 target="_blank"
@@ -172,9 +179,7 @@ export default function WalletOverview() {
               No funds detected. Use the faucet steps above, then refresh.
             </p>
           )}
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Network: {process.env.NEXT_PUBLIC_BLOCKFROST_NETWORK || 'preview'} (Blockfrost)
-          </p>
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">Network: {BLOCKFROST_LABEL} (Blockfrost)</p>
         </div>
       </div>
     </div>

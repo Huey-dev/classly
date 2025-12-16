@@ -10,6 +10,7 @@ import { CourseShareTracker } from './CourseShareTracker';
 import { CourseVisibilityControls } from './CourseVisibilityControls';
 import EscrowWidgetClient from './EscrowWidgetClient';
 import { OwnerWalletBanner } from './OwnerWalletBanner';
+import RatingClaimClient from './RatingClaimClient';
 
 type Section = {
   id: string;
@@ -176,6 +177,14 @@ export default async function CoursePage({
             initialGrossAda={priceAdaNumber}
             courseTitle={course.title}
             authorName={course.author.name}
+          />
+        )}
+        {enrolled && !isOwner && (
+          <RatingClaimClient
+            courseId={course.id}
+            enrolled={enrolled}
+            initialAverage={course.averageRating ?? null}
+            initialCount={course.ratingCount ?? null}
           />
         )}
         {showClaimNft && (
