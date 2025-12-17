@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLucid } from "../context/LucidContext";
 
 type Course = {
   id: string;
@@ -23,6 +24,7 @@ type Video = {
 };
 
 export default function CourseManager() {
+  const { walletAddress } = useLucid();
   const [courses, setCourses] = useState<Course[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
@@ -33,31 +35,6 @@ export default function CourseManager() {
   const [newCover, setNewCover] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const updateVisibility = async (visibility: "PUBLISHED" | "UNLISTED" | "DRAFT") => {
-    if (!selectedCourse) {
-      setMessage("Choose a course first");
-      return;
-    }
-    try {
-      const res = await fetch(`/api/courses/${selectedCourse}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update visibility");
-      }
-      const updated = await res.json();
-      setCourses((prev) =>
-        prev.map((c) => (c.id === selectedCourse ? { ...c, visibility: updated.visibility } : c))
-      );
-      setMessage(`Visibility set to ${visibility}`);
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Failed to update visibility");
-    }
-  };
-
   useEffect(() => {
     refresh();
   }, []);
@@ -93,6 +70,7 @@ export default function CourseManager() {
           description: newDescription,
           coverImage: newCover,
           priceAda: newPrice ? Number(newPrice) : undefined,
+          walletAddress: walletAddress || undefined,
         }),
       });
       if (!res.ok) {
@@ -214,33 +192,9 @@ export default function CourseManager() {
           >
             {creating ? "Creating..." : "Create course"}
           </button>
-          {selectedCourse && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500">
-                Visibility: {courses.find((c) => c.id === selectedCourse)?.visibility || "N/A"}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => updateVisibility("PUBLISHED")}
-                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white"
-                >
-                  Publish
-                </button>
-                <button
-                  onClick={() => updateVisibility("UNLISTED")}
-                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500 text-white"
-                >
-                  Unlist
-                </button>
-                <button
-                  onClick={() => updateVisibility("DRAFT")}
-                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-gray-300 text-gray-800"
-                >
-                  Draft
-                </button>
-              </div>
-            </div>
-          )}
+          <p className="text-[11px] text-gray-500">
+            Courses publish automatically on creation and use your connected wallet for payouts.
+          </p>
         </div>
       </div>
 

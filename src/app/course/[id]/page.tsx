@@ -7,7 +7,6 @@ import { getUserFromRequest } from '../../../../lib/auth/getUserFromRequest';
 import { EnrollButton } from './EnrollButton';
 import { ShareCourseBanner } from './ShareCourseBanner';
 import { CourseShareTracker } from './CourseShareTracker';
-import { CourseVisibilityControls } from './CourseVisibilityControls';
 import EscrowWidgetClient from './EscrowWidgetClient';
 import { OwnerWalletBanner } from './OwnerWalletBanner';
 import RatingClaimClient from './RatingClaimClient';
@@ -165,7 +164,6 @@ export default async function CoursePage({
           <div className="space-y-4">
             <ShareCourseBanner courseId={course.id} instructorId={course.userId} initialStats={normalizedShareStats} />
             <OwnerWalletBanner userId={course.userId} initialWallet={course.author.walletAddress as string | null} />
-            <CourseVisibilityControls courseId={course.id} initialVisibility={course.visibility} />
           </div>
         )}
         {showEscrow && (

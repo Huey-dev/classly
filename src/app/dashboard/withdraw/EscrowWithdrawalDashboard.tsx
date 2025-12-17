@@ -91,7 +91,7 @@ export default function EscrowWithdrawalDashboard() {
   const params = useParams<{ courseId: string }>();
   const courseId = params?.courseId;
   const router = useRouter();
-  const { lucid, walletAddress } = useLucid();
+  const { lucid, walletAddress, loading: walletLoading, connectWallet, error: walletError } = useLucid();
 
   // Local state for course metadata, escrow snapshot, and engagement data
   const [course, setCourse] = useState<any | null>(null);
@@ -106,6 +106,7 @@ export default function EscrowWithdrawalDashboard() {
     message: string;
     txHash?: string;
   }>({ type: "idle", message: "" });
+  const walletReady = !!lucid && !!walletAddress;
 
   // Load the course details, escrow snapshot, and engagement metrics when
   // courseId changes.  The engagement metrics are derived from the server’s
@@ -196,6 +197,42 @@ export default function EscrowWithdrawalDashboard() {
     })();
   }, [courseId]);
 
+  // If escrow exists but scriptAddress is missing (older rows), derive it from the contract
+  // and sync it so withdrawals can proceed.
+  useEffect(() => {
+    if (!courseId || !escrow || escrow.scriptAddress || !lucid) return;
+    (async () => {
+      try {
+        const { getEscrowAddress, resolveNetwork } = await import("../../lib/contracts");
+        const addr = await getEscrowAddress(lucid, resolveNetwork());
+        setEscrow((prev) => (prev ? { ...prev, scriptAddress: addr } : prev));
+        await fetch(`/api/escrow/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            courseId,
+            scriptAddress: addr,
+            netTotal: escrow.netTotal,
+            paidCount: escrow.paidCount,
+            paidOut: escrow.paidOut,
+            released30: escrow.released30,
+            released40: escrow.released40,
+            releasedFinal: escrow.releasedFinal,
+            comments: escrow.comments,
+            ratingSum: escrow.ratingSum,
+            ratingCount: escrow.ratingCount,
+            allWatchMet: escrow.allWatchMet,
+            firstWatch: escrow.firstWatch,
+            disputeBy: escrow.disputeBy,
+            status: escrow.status,
+          }),
+        });
+      } catch (err) {
+        console.warn("Failed to backfill script address", err);
+      }
+    })();
+  }, [courseId, escrow, lucid]);
+
   // Convert lovelace to ADA (with fixed decimals) for display
   const toAda = (lovelace: number) => (lovelace / 1_000_000).toFixed(2);
 
@@ -281,8 +318,13 @@ export default function EscrowWithdrawalDashboard() {
    * release.
    */
   const handleWithdraw = async (releaseType: "30" | "40" | "final") => {
-    if (!lucid || !walletAddress || !escrow?.scriptAddress) {
-      setTxStatus({ type: "error", message: "Wallet not connected" });
+    if (!escrow?.scriptAddress) {
+      setTxStatus({ type: "error", message: "Escrow is not ready yet. Wait for the first payment to lock funds on-chain." });
+      return;
+    }
+    if (!lucid || !walletAddress) {
+      setTxStatus({ type: "error", message: "Wallet not connected. Click Connect wallet and try again." });
+      connectWallet();
       return;
     }
     try {
@@ -301,24 +343,15 @@ export default function EscrowWithdrawalDashboard() {
       if (!escrowUtxo) throw new Error("Escrow UTxO not found");
       // Choose redeemer according to the milestone.  The names MUST match
       // EscrowRedeemerSchema exactly.
-      type RedeemerNames =
-        | "ReleaseInitial"
-        | "ReleaseMetrics40"
-        | "ReleaseFinal";
-      let redeemerName: RedeemerNames;
-      if (releaseType === "30") {
-        redeemerName = "ReleaseInitial";
-      } else if (releaseType === "40") {
-        redeemerName = "ReleaseMetrics40";
-      } else {
-        redeemerName = "ReleaseFinal";
-      }
-      const redeemer =
+      type RedeemerNames = "ReleaseInitial" | "ReleaseMetrics40" | "ReleaseFinal";
+      const redeemerName: RedeemerNames =
         releaseType === "30"
-          ? Data.to("ReleaseInitial")
+          ? "ReleaseInitial"
           : releaseType === "40"
-          ? Data.to("ReleaseMetrics40")
-          : Data.to("ReleaseFinal");
+          ? "ReleaseMetrics40"
+          : "ReleaseFinal";
+      // Encode redeemer using the schema to avoid hex serialization errors (cast keeps TS happy)
+      const redeemer = Data.to(redeemerName as any, EscrowRedeemerSchema);
       // Calculate payout based on the current netTotal.  In a more
       // sophisticated design you could track separate buckets for each
       // tranche; here we simply use the current netTotal and a fixed
@@ -626,6 +659,34 @@ export default function EscrowWithdrawalDashboard() {
           </div>
         )}
 
+        {/* Wallet status */}
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-4 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="space-y-1 max-w-3xl">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Wallet connection</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {walletReady
+                  ? `Connected: ${walletAddress}`
+                  : walletLoading
+                  ? "Initializing wallet..."
+                  : "Connect your payout wallet before withdrawing funds."}
+              </p>
+              {walletError && (
+                <p className="text-xs text-red-600 dark:text-red-300">Wallet error: {walletError}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => connectWallet()}
+                disabled={walletLoading}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60"
+              >
+                {walletLoading ? "Connecting..." : walletReady ? "Reconnect" : "Connect wallet"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Balance overview */}
         <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-6 border border-gray-200 dark:border-gray-700">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
@@ -726,7 +787,7 @@ export default function EscrowWithdrawalDashboard() {
               </p>
               <button
                 onClick={() => handleWithdraw("30")}
-                disabled={!canWithdraw30 || txStatus.type !== "idle"}
+                disabled={!canWithdraw30 || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
                 {escrow.released30
@@ -802,7 +863,7 @@ export default function EscrowWithdrawalDashboard() {
               )}
               <button
                 onClick={() => handleWithdraw("40")}
-                disabled={!canWithdraw40 || txStatus.type !== "idle"}
+                disabled={!canWithdraw40 || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
                 {escrow.released40
@@ -854,7 +915,7 @@ export default function EscrowWithdrawalDashboard() {
               </div>
               <button
                 onClick={() => handleWithdraw("final")}
-                disabled={!canWithdrawFinal || txStatus.type !== "idle"}
+                disabled={!canWithdrawFinal || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
                 {escrow.releasedFinal

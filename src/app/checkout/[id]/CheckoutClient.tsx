@@ -194,6 +194,9 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
         body: JSON.stringify({
           courseId,
           netAmount: datum.netTotal.toString(),
+          scriptAddress,
+          receiverPkh: receiver,
+          oraclePkh: oracle,
         }),
       });
       if (createRes.status === 401) throw new Error('Please sign in before paying for this course.');

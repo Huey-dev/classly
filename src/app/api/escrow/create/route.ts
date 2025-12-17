@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const courseId = String(body.courseId || "");
   const netAmount = Number(body.netAmount || 0); // lovelace, AFTER platform fee
+  const scriptAddress = typeof body.scriptAddress === "string" ? body.scriptAddress.trim() : null;
+  const receiverPkh = typeof body.receiverPkh === "string" ? body.receiverPkh.trim() : null;
+  const oraclePkh = typeof body.oraclePkh === "string" ? body.oraclePkh.trim() : null;
 
   if (!courseId || netAmount <= 0) {
     return NextResponse.json(
@@ -86,6 +89,9 @@ export async function POST(req: NextRequest) {
         allWatchMet: true,
         firstWatch: BigInt(Math.floor(Date.now() / 1000)),
         disputeBy: BigInt(Math.floor(Date.now() / 1000) + 14 * 86400),
+        scriptAddress: scriptAddress || null,
+        receiverPkh: receiverPkh || null,
+        oraclePkh: oraclePkh || null,
       },
     });
   } else {
@@ -94,6 +100,9 @@ export async function POST(req: NextRequest) {
       data: {
         netTotal: { increment: netAmount },
         paidCount: { increment: 1 },
+        ...(scriptAddress ? { scriptAddress } : {}),
+        ...(receiverPkh ? { receiverPkh } : {}),
+        ...(oraclePkh ? { oraclePkh } : {}),
       },
     });
   }
@@ -104,6 +113,7 @@ export async function POST(req: NextRequest) {
     escrow: {
       netTotal: escrow.netTotal,
       paidCount: escrow.paidCount,
+      scriptAddress: escrow.scriptAddress,
     },
   });
 }

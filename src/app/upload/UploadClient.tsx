@@ -4,6 +4,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { saveVideoToLibrary } from '../../../lib/actions';
+import { useLucid } from '../context/LucidContext';
 
 type CourseForm = {
   title: string;
@@ -56,6 +57,7 @@ const categoryOptions = [
 export default function UploadClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { walletAddress } = useLucid();
   const attachCourseId = searchParams.get('courseId');
   const isAttachMode = Boolean(attachCourseId);
   const [attachCourse, setAttachCourse] = useState<ExistingCourse | null>(null);
@@ -298,6 +300,7 @@ export default function UploadClient() {
             coverImage: null,
             category: values.category,
             priceAda: values.priceAda ? Number(values.priceAda) : undefined,
+            walletAddress: walletAddress || undefined,
           }),
         });
 

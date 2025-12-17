@@ -70,7 +70,8 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userKey, setUserKey] = useState<string>("anon");
+  const [userKey, setUserKey] = useState<string | null>(null);
+  const [profileWallet, setProfileWallet] = useState<string | null>(null);
 
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
 
@@ -128,13 +129,13 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     // Fetch user id to namespace wallet storage per user
     (async () => {
       try {
-        const res = await fetch("/api/me");
+        const res = await fetch("/api/me", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
-          if (data?.id) {
-            setUserKey(data.id);
-            return;
-          }
+          const id = data?.id || data?.user?.id;
+          setUserKey(id || "anon");
+          setProfileWallet(data?.walletAddress ?? data?.user?.walletAddress ?? null);
+          return;
         }
       } catch {
         // ignore and fall back to anon
@@ -144,7 +145,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !userKey) {
       return;
     }
 
@@ -207,6 +208,24 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     })();
   }, [BF_KEY, fetchAndSetBalance, userKey]);
 
+  // Persist the generated wallet address onto the user profile so courses automatically reuse it.
+  useEffect(() => {
+    if (!walletAddress || !userKey || userKey === "anon") return;
+    if (profileWallet && profileWallet === walletAddress) return;
+    (async () => {
+      try {
+        await fetch(`/api/users/${userKey}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress }),
+        });
+        setProfileWallet(walletAddress);
+      } catch (err) {
+        console.warn("Failed to persist wallet to profile", err);
+      }
+    })();
+  }, [walletAddress, userKey, profileWallet]);
+
   const refreshBalance = useCallback(async () => {
     if (!lucid) {
       console.warn("Cannot refresh balance - Lucid not initialized");
@@ -230,7 +249,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     setSeedPhrase(null);
     setError(null);
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && userKey) {
       localStorage.removeItem(`${ADDRESS_KEY_BASE}_${userKey}`);
       localStorage.removeItem(`${STORAGE_KEY_BASE}_${userKey}`);
     }

@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       coverImage: coverImage || null,
       userId: user.id,
       slug: uniqueSlug,
-      visibility: "DRAFT",
+      visibility: "PUBLISHED",
       language: typeof category === "string" ? category : null,
       priceAda: normalizedPrice,
       isPaid,
@@ -104,5 +104,6 @@ export async function POST(req: NextRequest) {
     language: course.language,
     priceAda: course.priceAda,
     isPaid: course.isPaid,
+    visibility: course.visibility,
   });
 }
