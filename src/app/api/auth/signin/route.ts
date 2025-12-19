@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === "production",
             maxAge: 15 * 60,
             path: "/",
-            sameSite: "strict"
+            // "lax" keeps it secure but avoids common dev issues where strict cookies
+            // don't get sent in some navigation + embedded contexts.
+            sameSite: "lax"
         })
 
         cookieStore.set("refreshToken", refreshToken, {
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === "production",
             maxAge: 7 * 24 * 60 * 60,
             path: "/",
-            sameSite: "strict"
+            sameSite: "lax"
         })
 
         // success

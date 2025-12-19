@@ -27,11 +27,13 @@ export default function WalletOverview() {
     balance,
     seedPhrase,
     connecting,
+    toppingUp,
     loading,
     error,
     connectWallet,
     disconnectWallet,
     refreshBalance,
+    requestTopup,
   } = useLucid();
 
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'missing'>('idle');
@@ -162,13 +164,22 @@ export default function WalletOverview() {
           <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-100">
             {balance == null ? '—' : `${balance.toFixed(6)} ADA`}
           </p>
+          {walletAddress && typeof balance === 'number' && balance <= 0 && (
+            <button
+              onClick={() => requestTopup({ ada: 5 })}
+              disabled={toppingUp}
+              className="mt-3 w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-sm font-semibold text-white"
+            >
+              {toppingUp ? 'Requesting test ADA…' : 'Request Test ADA (auto top-up)'}
+            </button>
+          )}
           <button
             onClick={async () => {
               setRefreshing(true);
               await refreshBalance();
               setRefreshing(false);
             }}
-            disabled={!walletAddress || refreshing}
+            disabled={!walletAddress || refreshing || toppingUp}
             className="mt-3 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {refreshing && <span className="h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" />}

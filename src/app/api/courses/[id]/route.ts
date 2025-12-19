@@ -122,7 +122,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     averageRating: course.averageRating,
     updatedAt: course.updatedAt,
     enrollmentCount: course._count.enrollments,
-    videoCount: course._count.contents,
+    videoCount: course.contents.length,
     totalDurationSeconds,
     author: course.author,
     enrolled: !!enrollment,

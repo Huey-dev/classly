@@ -537,6 +537,7 @@ model Escrow {
   receiverPkh    String?
   oraclePkh      String?
   scriptAddress  String?
+  courseIdHash   String?
   netTotal       Decimal   @default(0)
   paidCount      Int       @default(0)
   paidOut        Decimal   @default(0)
@@ -555,6 +556,7 @@ model Escrow {
   student       User?   @relation("EscrowStudent", fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
+  @@index([courseIdHash])
   @@index([teacherId])
   @@index([studentId])
 }

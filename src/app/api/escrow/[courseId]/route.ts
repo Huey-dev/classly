@@ -47,6 +47,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // This handles courses that have been created but haven't received any payments yet.
     // The dashboard can now display "0 students, 0 ADA locked" instead of crashing.
     if (!escrow) {
+      const nowMs = BigInt(Date.now());
       escrow = await prisma.escrow.create({
         data: {
           courseId,
@@ -60,8 +61,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
           ratingSum: 0,         // No ratings yet
           ratingCount: 0,       // No rating count
           allWatchMet: true,    // Default to true (no students to violate)
-          firstWatch: BigInt(Math.floor(Date.now() / 1000)),  // Current timestamp
-          disputeBy: BigInt(Math.floor(Date.now() / 1000) + 14 * 86400), // 14 days from now
+          firstWatch: 0n,
+          disputeBy: nowMs + 14n * 24n * 60n * 60n * 1000n,
           status: 'PENDING',    // Waiting for first payment
         },
       });

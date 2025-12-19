@@ -21,25 +21,28 @@ import { useLucid } from "../../context/LucidContext";
 import { Data } from "@lucid-evolution/lucid";
 import type { UTxO } from "@lucid-evolution/lucid";
 import EscrowSimulator from "../component/EscrowSimulator";
+import { normalizePkh, hashCourseId } from "../../lib/escrow-utils";
 
 // Define the redeemer schema for your validator.  These must match the
 // contract’s expected constructors exactly.  Typing against this schema
 // prevents passing invalid redeemer strings.
 const EscrowRedeemerSchema = Data.Enum([
   Data.Object({
-    AddPayment: Data.Object({
-      netAmount: Data.Integer(),
-      watchMet: Data.Boolean(),
-      ratingX10: Data.Integer(),
-      commented: Data.Boolean(),
-      firstWatchAt: Data.Integer(),
-    }),
+    AddPayment: Data.Tuple([
+      Data.Object({
+        net_amount: Data.Integer(),
+        watch_met: Data.Boolean(),
+        rating_x10: Data.Integer(),
+        commented: Data.Boolean(),
+        first_watch_at: Data.Integer(),
+      }),
+    ]),
   }),
-  Data.Literal("ReleaseInitial"),
-  Data.Literal("ReleaseMetrics40"),
-  Data.Literal("ReleaseFinal"),
-  Data.Literal("Refund"),
-  Data.Literal("DisputeHold"),
+  Data.Object({ ReleaseInitial: Data.Tuple([]) }),
+  Data.Object({ ReleaseMetrics40: Data.Tuple([]) }),
+  Data.Object({ ReleaseFinal: Data.Tuple([]) }),
+  Data.Object({ Refund: Data.Tuple([]) }),
+  Data.Object({ DisputeHold: Data.Tuple([]) }),
 ]);
 
 /**
@@ -61,6 +64,8 @@ type EscrowState = {
   firstWatch: number;
   disputeBy: number;
   scriptAddress: string | null;
+  receiverPkh?: string | null;
+  oraclePkh?: string | null;
 };
 
 /**
@@ -91,7 +96,16 @@ export default function EscrowWithdrawalDashboard() {
   const params = useParams<{ courseId: string }>();
   const courseId = params?.courseId;
   const router = useRouter();
-  const { lucid, walletAddress, loading: walletLoading, connectWallet, error: walletError } = useLucid();
+  const {
+    lucid,
+    walletAddress,
+    balance,
+    toppingUp,
+    requestTopup,
+    loading: walletLoading,
+    connectWallet,
+    error: walletError,
+  } = useLucid();
 
   // Local state for course metadata, escrow snapshot, and engagement data
   const [course, setCourse] = useState<any | null>(null);
@@ -107,6 +121,21 @@ export default function EscrowWithdrawalDashboard() {
     txHash?: string;
   }>({ type: "idle", message: "" });
   const walletReady = !!lucid && !!walletAddress;
+  const courseIdHash = courseId ? hashCourseId(courseId) : null;
+  const [chainSnapshot, setChainSnapshot] = useState<{
+    paidCount: number;
+    lockedLovelace: string;
+    released30: boolean;
+    released40: boolean;
+    releasedFinal: boolean;
+    receiverPkh: string;
+    oraclePkh: string;
+    firstWatch: number;
+    disputeBy: number;
+  } | null>(null);
+  const [chainSnapshotError, setChainSnapshotError] = useState<string | null>(null);
+  const [devFixBusy, setDevFixBusy] = useState(false);
+  const [syncedChainTimes, setSyncedChainTimes] = useState(false);
 
   // Load the course details, escrow snapshot, and engagement metrics when
   // courseId changes.  The engagement metrics are derived from the server’s
@@ -128,9 +157,9 @@ export default function EscrowWithdrawalDashboard() {
           coverImage: courseData.coverImage,
           priceAda: Number(courseData.priceAda ?? 0),
           visibility: courseData.visibility,
-          totalDuration: Number(courseData.totalDuration ?? 0),
+          totalDuration: Number(courseData.totalDurationSeconds ?? courseData.totalDuration ?? 0),
           enrollmentCount: courseData.enrollmentCount ?? 0,
-          videoCount: courseData._count?.contents ?? 0,
+          videoCount: Number(courseData.videoCount ?? courseData._count?.contents ?? 0),
           averageRating: courseData.averageRating,
         });
 
@@ -153,12 +182,14 @@ export default function EscrowWithdrawalDashboard() {
           firstWatch: Number(escrowData.firstWatch ?? 0),
           disputeBy: Number(escrowData.disputeBy ?? 0),
           scriptAddress: escrowData.scriptAddress || null,
+          receiverPkh: escrowData.receiverPkh ?? null,
+          oraclePkh: escrowData.oraclePkh ?? null,
         });
 
         // Derive engagement metrics.  You can compute averages on the fly
         // or call a dedicated endpoint that returns these values already
         // aggregated.  Here we compute watch and rating averages locally.
-        const totalDuration = Number(courseData.totalDuration ?? 0);
+        const totalDuration = Number(courseData.totalDurationSeconds ?? courseData.totalDuration ?? 0);
         const enrollmentCount = courseData.enrollmentCount ?? 0;
         let totalWatchSeconds = 0;
         const watchRes = await fetch(`/api/courses/${courseId}/progress`);
@@ -235,18 +266,138 @@ export default function EscrowWithdrawalDashboard() {
 
   // Convert lovelace to ADA (with fixed decimals) for display
   const toAda = (lovelace: number) => (lovelace / 1_000_000).toFixed(2);
+  const toAdaFromBig = (lovelace: bigint) => (Number(lovelace) / 1_000_000).toFixed(6);
+
+  // Load on-chain snapshot for the escrow UTxO (best-effort) so UI reflects actual validator state.
+  useEffect(() => {
+    if (!lucid || !escrow?.scriptAddress) return;
+    let active = true;
+    (async () => {
+      try {
+        setChainSnapshotError(null);
+        const scriptUtxos: UTxO[] = await lucid.utxosAt(escrow.scriptAddress!);
+        if (!active) return;
+        if (!scriptUtxos.length) {
+          setChainSnapshot(null);
+          return;
+        }
+        const { EscrowDatumSchema } = await import("../../lib/contracts");
+        const EscrowDatum = EscrowDatumSchema as any;
+        const parsed = scriptUtxos
+          .filter((u) => u.datum)
+          .map((u) => {
+            try {
+              const datum = Data.from(u.datum!, EscrowDatum) as any;
+              return { utxo: u, datum };
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean) as Array<{ utxo: UTxO; datum: any }>;
+
+        const byCourse = courseIdHash
+          ? parsed.filter((c) => String(c.datum?.courseId ?? "") === courseIdHash)
+          : parsed;
+        const byReceiver = escrow.receiverPkh
+          ? byCourse.filter((c) => String(c.datum?.receiver ?? "") === String(escrow.receiverPkh))
+          : byCourse;
+        const byOracle = escrow.oraclePkh
+          ? byReceiver.filter((c) => String(c.datum?.oracle ?? "") === String(escrow.oraclePkh))
+          : byReceiver;
+
+        if (byOracle.length + byReceiver.length === 0 || byCourse.length === 0) {
+          setChainSnapshot(null);
+          setChainSnapshotError("Escrow UTxO for this course not found on-chain.");
+          return;
+        }
+        if (byCourse.length > 1) {
+          setChainSnapshotError("Multiple escrow UTxOs found for this course. Please consolidate.");
+        }
+
+        const chosen = (byOracle.length ? byOracle : byReceiver)[0];
+
+        if (!chosen) {
+          setChainSnapshot(null);
+          return;
+        }
+
+        const locked = BigInt(chosen.datum?.netTotal ?? 0n);
+        setChainSnapshot({
+          paidCount: Number(chosen.datum?.paidCount ?? 0n),
+          lockedLovelace: locked.toString(),
+          released30: !!chosen.datum?.released30,
+          released40: !!chosen.datum?.released40,
+          releasedFinal: !!chosen.datum?.releasedFinal,
+          receiverPkh: String(chosen.datum?.receiver ?? ""),
+          oraclePkh: String(chosen.datum?.oracle ?? ""),
+          firstWatch: Number(chosen.datum?.firstWatch ?? 0n),
+          disputeBy: Number(chosen.datum?.disputeBy ?? 0n),
+        });
+      } catch (e: any) {
+        if (!active) return;
+        setChainSnapshot(null);
+        setChainSnapshotError(e?.message || "Failed to load on-chain escrow snapshot");
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [lucid, escrow?.scriptAddress, escrow?.receiverPkh, escrow?.oraclePkh]);
+
+  // Backfill disputeBy/firstWatch from on-chain datum if older rows were overwritten to 0.
+  useEffect(() => {
+    if (!courseId || !escrow || !chainSnapshot || syncedChainTimes) return;
+    if (escrow.disputeBy && escrow.disputeBy > 0) {
+      setSyncedChainTimes(true);
+      return;
+    }
+    if (!chainSnapshot.disputeBy || chainSnapshot.disputeBy <= 0) return;
+    (async () => {
+      try {
+        await fetch(`/api/escrow/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            courseId,
+            firstWatch: chainSnapshot.firstWatch,
+            disputeBy: chainSnapshot.disputeBy,
+          }),
+        });
+      } catch (e) {
+        console.warn("Failed to backfill disputeBy from chain", e);
+      } finally {
+        setSyncedChainTimes(true);
+      }
+    })();
+  }, [courseId, escrow, chainSnapshot, syncedChainTimes]);
 
   // Compute the days left in the dispute window.  Once `released40` is true
   // and the window has passed, the final 30% becomes withdrawable.
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const daysRemaining = escrow
-    ? Math.max(0, Math.floor((escrow.disputeBy - nowSeconds) / 86400))
+  const normalizeUnixMs = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    // Heuristic: seconds timestamps are ~10 digits; ms timestamps are ~13 digits.
+    return value < 10_000_000_000 ? value * 1000 : value;
+  };
+  const nowMs = Date.now();
+  const disputeByMs = chainSnapshot?.disputeBy
+    ? normalizeUnixMs(chainSnapshot.disputeBy)
+    : escrow
+    ? normalizeUnixMs(escrow.disputeBy)
     : 0;
+  const daysRemaining = escrow
+    ? Math.max(0, Math.floor((disputeByMs - nowMs) / 86_400_000))
+    : 0;
+
+  const effectivePaidCount = chainSnapshot?.paidCount ?? escrow?.paidCount ?? 0;
+  const effectiveReleased30 = chainSnapshot?.released30 ?? escrow?.released30 ?? false;
+  const effectiveReleased40 = chainSnapshot?.released40 ?? escrow?.released40 ?? false;
+  const effectiveReleasedFinal = chainSnapshot?.releasedFinal ?? escrow?.releasedFinal ?? false;
 
   // Progress calculations for milestone bars.  If the escrow state is not yet
   // loaded, default to 0.
   const milestone30Progress = escrow
-    ? Math.min((escrow.paidCount / 5) * 100, 100)
+    ? Math.min((effectivePaidCount / 5) * 100, 100)
     : 0;
   const milestone40Progress = engagement ? engagement.engagementScore : 0;
 
@@ -254,18 +405,18 @@ export default function EscrowWithdrawalDashboard() {
   // released.  40%: initial 30% has been released, metrics met, and not yet
   // released.  Final: 40% released, window elapsed, final not yet released.
   const canWithdraw30 = escrow
-    ? escrow.paidCount >= 5 && !escrow.released30
+    ? effectivePaidCount >= 5 && !effectiveReleased30
     : false;
   const canWithdraw40 =
     escrow && engagement
-      ? escrow.released30 &&
-        !escrow.released40 &&
+      ? effectiveReleased30 &&
+        !effectiveReleased40 &&
         engagement.engagementScore >= 100
       : false;
   const canWithdrawFinal = escrow
-    ? escrow.released40 &&
-      !escrow.releasedFinal &&
-      nowSeconds >= escrow.disputeBy
+    ? effectiveReleased40 &&
+      !effectiveReleasedFinal &&
+      nowMs >= disputeByMs
     : false;
 
   /**
@@ -339,34 +490,77 @@ export default function EscrowWithdrawalDashboard() {
       const scriptUtxos: UTxO[] = await lucid.utxosAt(escrow.scriptAddress);
       if (scriptUtxos.length === 0)
         throw new Error("No UTxOs at script address");
-      const escrowUtxo = scriptUtxos.find((u) => u.datum);
-      if (!escrowUtxo) throw new Error("Escrow UTxO not found");
+
+      const { EscrowDatumSchema } = await import("../../lib/contracts");
+      const EscrowDatum = EscrowDatumSchema as any;
+      const candidates = scriptUtxos
+        .filter((u) => u.datum)
+        .map((u) => {
+          try {
+            const datum = Data.from(u.datum!, EscrowDatum) as any;
+            return { utxo: u, datum };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as Array<{ utxo: UTxO; datum: any }>;
+
+      const byCourse = courseIdHash
+        ? candidates.filter((c) => String(c.datum?.courseId ?? "") === courseIdHash)
+        : candidates;
+      if (byCourse.length === 0) throw new Error("Escrow UTxO not found for this course (course_id mismatch).");
+      if (byCourse.length > 1) throw new Error("Multiple escrow UTxOs found for this course; resolve before withdrawing.");
+
+      const chosen = byCourse[0];
+
+      const escrowUtxo = chosen.utxo;
+      const currentDatum = chosen.datum;
+      const onChainPaidCount = BigInt(currentDatum?.paidCount ?? 0n);
+      const datumNetTotal = BigInt(currentDatum?.netTotal ?? 0n);
+
+      if (datumNetTotal <= 0n) throw new Error("Nothing locked on-chain yet for this escrow.");
+      if (releaseType === "30" && onChainPaidCount < 5n) {
+        throw new Error(`On-chain paidCount is ${onChainPaidCount.toString()} (needs 5 to release 30%).`);
+      }
+
+      const connectedPkh = normalizePkh(walletAddress, "Connected wallet");
+      if (String(currentDatum?.receiver ?? "") !== connectedPkh) {
+        throw new Error("Connected wallet does not match the payout wallet used to create the escrow (receiver PKH mismatch).");
+      }
       // Choose redeemer according to the milestone.  The names MUST match
       // EscrowRedeemerSchema exactly.
-      type RedeemerNames = "ReleaseInitial" | "ReleaseMetrics40" | "ReleaseFinal";
-      const redeemerName: RedeemerNames =
+      const redeemerObj =
         releaseType === "30"
-          ? "ReleaseInitial"
+          ? ({ ReleaseInitial: [] } as const)
           : releaseType === "40"
-          ? "ReleaseMetrics40"
-          : "ReleaseFinal";
-      // Encode redeemer using the schema to avoid hex serialization errors (cast keeps TS happy)
-      const redeemer = Data.to(redeemerName as any, EscrowRedeemerSchema);
-      // Calculate payout based on the current netTotal.  In a more
-      // sophisticated design you could track separate buckets for each
-      // tranche; here we simply use the current netTotal and a fixed
-      // percentage.  Note that BigInt arithmetic is necessary for Lovelace.
+          ? ({ ReleaseMetrics40: [] } as const)
+          : ({ ReleaseFinal: [] } as const);
+      const redeemer = Data.to(redeemerObj as any, EscrowRedeemerSchema);
+      // Calculate payout using datum.netTotal (validator checks net_total field).
       let payoutLovelace = 0n;
       if (releaseType === "30") {
-        payoutLovelace = BigInt(Math.floor(escrow.netTotal * 0.3));
+        payoutLovelace = (datumNetTotal * 30n) / 100n;
       } else if (releaseType === "40") {
-        payoutLovelace = BigInt(Math.floor(escrow.netTotal * 0.4));
+        payoutLovelace = (datumNetTotal * 40n) / 100n;
       } else {
-        payoutLovelace = BigInt(escrow.netTotal);
+        payoutLovelace = datumNetTotal;
       }
+      if (payoutLovelace <= 0n) throw new Error("Nothing to withdraw yet.");
+
+      const nextNetTotal = datumNetTotal - payoutLovelace;
+      const nextPaidOut = BigInt(currentDatum?.paidOut ?? 0n) + payoutLovelace;
+      const updatedDatum = {
+        ...currentDatum,
+        netTotal: nextNetTotal,
+        paidOut: nextPaidOut,
+        released30: releaseType === "30" ? true : !!currentDatum?.released30,
+        released40: releaseType === "40" ? true : !!currentDatum?.released40,
+        releasedFinal: releaseType === "final" ? true : !!currentDatum?.releasedFinal,
+        courseId: currentDatum.courseId,
+      };
+
       // Determine how much remains at the script after withdrawing the payout.
-      const scriptLovelace = BigInt(escrowUtxo.assets?.lovelace ?? 0n);
-      const remainingLovelace = scriptLovelace - payoutLovelace;
+      const remainingLovelace = nextNetTotal;
       setTxStatus({ type: "building", message: "Constructing transaction..." });
       // Build the transaction.  Collect the escrow UTxO, attach the
       // validator, pay the creator, and optionally pay the remainder back to
@@ -383,15 +577,15 @@ export default function EscrowWithdrawalDashboard() {
       if (remainingLovelace > 2_000_000n) {
         txBuilder = txBuilder.pay.ToAddressWithData(
           escrow.scriptAddress!,
-          { kind: "inline", value: escrowUtxo.datum! },
+          { kind: "inline", value: Data.to(updatedDatum, EscrowDatum) },
           { lovelace: remainingLovelace }
         );
       }
       // Add validity range (optional) and build
-      const now = Math.floor(Date.now() / 1000);
+      const now = Date.now();
       const tx = await txBuilder
-        .validFrom(now * 1000)
-        .validTo((now + 300) * 1000)
+        .validFrom(now)
+        .validTo(now + 300_000)
         .complete();
       setTxStatus({
         type: "signing",
@@ -412,9 +606,10 @@ export default function EscrowWithdrawalDashboard() {
       // release flag and netTotal/paidOut.  DO NOT call sync for initial
       // deposits—those are handled by /api/escrow/create in the checkout
       // flow.
+      const remainingForDb = remainingLovelace > 2_000_000n ? remainingLovelace : 0n;
       const newPaidOut = escrow.paidOut + Number(payoutLovelace);
-      const newNetTotal = escrow.netTotal - Number(payoutLovelace);
-      await fetch(`/api/escrow/${courseId}/sync`, {
+      const newNetTotal = Number(remainingForDb);
+      await fetch(`/api/escrow/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -434,6 +629,131 @@ export default function EscrowWithdrawalDashboard() {
         type: "error",
         message: err?.message || "Transaction failed",
       });
+    }
+  };
+
+  /**
+   * DEV FIX: if off-chain paidCount is >= 5 but on-chain paidCount is lower
+   * (because earlier checkouts created multiple UTxOs), you can increment the
+   * on-chain paidCount by performing an AddPayment with net_amount=0.
+   *
+   * This is only useful on testnet/dev. The 5th increment triggers the contract's
+   * built-in 30% payout automatically (per AddPayment logic).
+   */
+  const handleDevAddPaymentZero = async () => {
+    if (!lucid || !walletAddress || !escrow?.scriptAddress) {
+      setTxStatus({ type: "error", message: "Wallet/escrow not ready." });
+      return;
+    }
+    if (!chainSnapshot) {
+      setTxStatus({ type: "error", message: "On-chain escrow snapshot not found." });
+      return;
+    }
+    if (chainSnapshot.paidCount >= 5) {
+      setTxStatus({ type: "success", message: "On-chain paidCount is already >= 5." });
+      return;
+    }
+
+    setDevFixBusy(true);
+    try {
+      setTxStatus({ type: "building", message: "Building dev AddPayment (0 ADA)..." });
+      const { getEscrowValidator, EscrowDatumSchema } = await import("../../lib/contracts");
+      const validatorScript = await getEscrowValidator();
+      const validator = { type: "PlutusV3" as const, script: validatorScript };
+      const EscrowDatum = EscrowDatumSchema as any;
+
+      const scriptUtxos: UTxO[] = await lucid.utxosAt(escrow.scriptAddress);
+      const candidates = scriptUtxos
+        .filter((u) => u.datum)
+        .map((u) => {
+          try {
+            const datum = Data.from(u.datum!, EscrowDatum) as any;
+            return { utxo: u, datum };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as Array<{ utxo: UTxO; datum: any }>;
+
+      const byCourse = courseIdHash
+        ? candidates.filter((c) => String(c.datum?.courseId ?? "") === courseIdHash)
+        : candidates;
+      if (byCourse.length === 0) throw new Error("Escrow UTxO not found for this course (course_id mismatch).");
+      if (byCourse.length > 1) throw new Error("Multiple escrow UTxOs found for this course; resolve before proceeding.");
+
+      const chosen = byCourse[0];
+
+      const escrowUtxo = chosen.utxo;
+      const currentDatum = chosen.datum;
+
+      const currentPaidCount = BigInt(currentDatum?.paidCount ?? 0n);
+      const currentNetTotal = BigInt(currentDatum?.netTotal ?? 0n);
+      const currentPaidOut = BigInt(currentDatum?.paidOut ?? 0n);
+      const connectedPkh = normalizePkh(walletAddress, "Connected wallet");
+      if (String(currentDatum?.receiver ?? "") !== connectedPkh) {
+        throw new Error(
+          "Connect the instructor payout wallet used to create this escrow (receiver PKH mismatch) to run this dev fix."
+        );
+      }
+
+      const netAmount = 0n;
+      const newCount = currentPaidCount + 1n;
+      const immediatePayout = newCount === 5n ? (currentNetTotal + netAmount) * 30n / 100n : 0n;
+
+      const nextDatum = {
+        ...currentDatum,
+        netTotal: currentNetTotal + netAmount - immediatePayout,
+        paidCount: newCount,
+        paidOut: currentPaidOut + immediatePayout,
+        released30: newCount >= 5n ? true : !!currentDatum?.released30,
+        courseId: currentDatum.courseId,
+      };
+
+      const redeemer = Data.to(
+        {
+          AddPayment: [
+            {
+              net_amount: netAmount,
+              watch_met: true,
+              rating_x10: 0n,
+              commented: false,
+              first_watch_at: (BigInt(currentDatum?.firstWatch ?? 0n) || BigInt(Date.now())) as bigint,
+            },
+          ],
+        } as any,
+        EscrowRedeemerSchema
+      );
+
+      let txBuilder = lucid
+        .newTx()
+        .collectFrom([escrowUtxo], redeemer)
+        .attach.SpendingValidator(validator);
+
+      if (immediatePayout > 0n) {
+        txBuilder = txBuilder.pay.ToAddress(walletAddress, { lovelace: immediatePayout });
+      }
+
+      txBuilder = txBuilder.pay.ToContract(
+        escrow.scriptAddress!,
+        { kind: "inline", value: Data.to(nextDatum, EscrowDatum) },
+        { lovelace: BigInt(nextDatum.netTotal ?? 0n) }
+      );
+
+      const tx = await txBuilder
+        .validFrom(Date.now())
+        .validTo(Date.now() + 300_000)
+        .complete();
+
+      setTxStatus({ type: "signing", message: "Please sign the dev AddPayment tx..." });
+      const signedTx = await tx.sign.withWallet().complete();
+      setTxStatus({ type: "submitting", message: "Submitting to blockchain..." });
+      const txHash = await signedTx.submit();
+      setTxStatus({ type: "success", message: `Submitted. Tx: ${txHash.slice(0, 10)}...`, txHash });
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e: any) {
+      setTxStatus({ type: "error", message: e?.message || "Dev AddPayment failed" });
+    } finally {
+      setDevFixBusy(false);
     }
   };
 
@@ -500,24 +820,8 @@ export default function EscrowWithdrawalDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-900 dark:via-blue-950 dark:to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-900 dark:via-blue-950 dark:to-slate-900 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {txStatus.type !== "idle" && (
-          <div
-            className={`rounded-2xl border p-4 text-sm ${
-              txStatus.type === "error"
-                ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-900/20 dark:text-red-200"
-                : txStatus.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-200"
-                : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-200"
-            }`}
-          >
-            {txStatus.message}
-            {txStatus.txHash && (
-              <span className="ml-2 font-mono text-xs break-all">({txStatus.txHash})</span>
-            )}
-          </div>
-        )}
         {/* Navigation back to dashboard */}
         <button
           onClick={() => router.push("/dashboard")}
@@ -527,26 +831,26 @@ export default function EscrowWithdrawalDashboard() {
         </button>
 
         {/* Course header with metadata */}
-        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-6 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start gap-6">
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl p-4 sm:p-6 border border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
             {course.coverImage && (
               <img
                 src={course.coverImage}
                 alt={course.title}
-                className="w-32 h-32 rounded-xl object-cover"
+                className="w-full sm:w-32 h-40 sm:h-32 rounded-xl object-cover"
               />
             )}
-            <div className="flex-1">
-              <div className="flex items-start justify-between gap-4 mb-2">
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-3xl font-bold text-gray-900 dark:text-white break-words">
                     {course.title}
                   </h1>
-                  <p className="text-gray-600 dark:text-gray-400 mt-1">
-                    {course.description}
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 break-words">
+                    {course.description || "No description."}
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-row sm:flex-col items-start sm:items-end gap-2 flex-wrap">
                   <span
                     className={
                       "px-3 py-1 rounded-full text-sm font-semibold " +
@@ -573,7 +877,7 @@ export default function EscrowWithdrawalDashboard() {
                   </span>
                 </div>
               </div>
-              <div className="flex gap-6 text-sm text-gray-600 dark:text-gray-400">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 text-sm text-gray-600 dark:text-gray-400">
                 <div>
                   <span className="font-semibold text-gray-900 dark:text-white">
                     {course.enrollmentCount}
@@ -592,12 +896,12 @@ export default function EscrowWithdrawalDashboard() {
                   </span>{" "}
                   ADA
                 </div>
-                {course.averageRating && (
+                {typeof course.averageRating === "number" && (
                   <div>
-                    ⭐{" "}
                     <span className="font-semibold text-gray-900 dark:text-white">
                       {course.averageRating.toFixed(1)}
-                    </span>
+                    </span>{" "}
+                    rating
                   </div>
                 )}
               </div>
@@ -643,7 +947,7 @@ export default function EscrowWithdrawalDashboard() {
                     rel="noopener noreferrer"
                     className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                   >
-                    View on Cardanoscan →
+                    View on Cardanoscan
                   </a>
                 )}
               </div>
@@ -652,7 +956,7 @@ export default function EscrowWithdrawalDashboard() {
                   onClick={() => setTxStatus({ type: "idle", message: "" })}
                   className="text-gray-500 hover:text-gray-700"
                 >
-                  ✕
+                  ×
                 </button>
               )}
             </div>
@@ -665,12 +969,32 @@ export default function EscrowWithdrawalDashboard() {
             <div className="space-y-1 max-w-3xl">
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Wallet connection</p>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                {walletReady
-                  ? `Connected: ${walletAddress}`
-                  : walletLoading
-                  ? "Initializing wallet..."
-                  : "Connect your payout wallet before withdrawing funds."}
+                {walletReady ? (
+                  <>
+                    Connected: <span className="break-all">{walletAddress}</span>
+                  </>
+                ) : walletLoading ? (
+                  "Initializing wallet..."
+                ) : (
+                  "Connect your payout wallet before withdrawing funds."
+                )}
               </p>
+              {typeof balance === "number" && (
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Balance: <span className="font-semibold">{balance.toFixed(6)} ADA</span>
+                </p>
+              )}
+              {chainSnapshot && (
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  On-chain locked: <span className="font-semibold">{toAdaFromBig(BigInt(chainSnapshot.lockedLovelace))} ADA</span>{" "}
+                  | paidCount: <span className="font-semibold">{chainSnapshot.paidCount}</span>
+                </p>
+              )}
+              {chainSnapshotError && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  On-chain snapshot error: {chainSnapshotError}
+                </p>
+              )}
               {walletError && (
                 <p className="text-xs text-red-600 dark:text-red-300">Wallet error: {walletError}</p>
               )}
@@ -683,6 +1007,15 @@ export default function EscrowWithdrawalDashboard() {
               >
                 {walletLoading ? "Connecting..." : walletReady ? "Reconnect" : "Connect wallet"}
               </button>
+              {walletReady && typeof balance === "number" && balance <= 0 && (
+                <button
+                  onClick={() => requestTopup({ ada: 5 })}
+                  disabled={toppingUp}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60"
+                >
+                  {toppingUp ? "Requesting..." : "Request Test ADA"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -692,7 +1025,7 @@ export default function EscrowWithdrawalDashboard() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
             Escrow Balance
           </h2>
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800">
               <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
                 RELEASED
@@ -706,7 +1039,7 @@ export default function EscrowWithdrawalDashboard() {
                 LOCKED
               </p>
               <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                {toAda(escrow.netTotal)} ADA
+                {chainSnapshot ? toAdaFromBig(BigInt(chainSnapshot.lockedLovelace)) : toAda(escrow.netTotal)} ADA
               </p>
             </div>
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
@@ -720,25 +1053,25 @@ export default function EscrowWithdrawalDashboard() {
           </div>
           {/* Visual representation of released tranches */}
           <div className="relative h-16 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex">
-            {escrow.released30 && (
+            {effectiveReleased30 && (
               <div
                 className="bg-emerald-500 flex items-center justify-center text-sm font-semibold text-white"
                 style={{ width: "30%" }}
               >
-                30% ✓
+                30% Released
               </div>
             )}
-            {escrow.released40 && (
+            {effectiveReleased40 && (
               <div
                 className="bg-blue-500 flex items-center justify-center text-sm font-semibold text-white"
                 style={{ width: "40%" }}
               >
-                40% ✓
+                40% Released
               </div>
             )}
-            {!escrow.releasedFinal && (
+            {!effectiveReleasedFinal && (
               <div className="bg-amber-500 flex items-center justify-center text-sm font-semibold text-white flex-1">
-                {escrow.released30 && escrow.released40
+                {effectiveReleased30 && effectiveReleased40
                   ? "30% Locked"
                   : "Pending"}
               </div>
@@ -759,9 +1092,9 @@ export default function EscrowWithdrawalDashboard() {
                   5 student enrollments
                 </p>
               </div>
-              {escrow.released30 && (
+              {effectiveReleased30 && (
                 <span className="px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
-                  ✓ Complete
+                  Complete
                 </span>
               )}
             </div>
@@ -771,7 +1104,7 @@ export default function EscrowWithdrawalDashboard() {
                   Current Enrollments:
                 </span>
                 <span className="font-bold text-gray-900 dark:text-white">
-                  {escrow.paidCount} / 5
+                  {effectivePaidCount} / 5
                 </span>
               </div>
               <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -781,20 +1114,45 @@ export default function EscrowWithdrawalDashboard() {
                 ></div>
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                {escrow.released30
-                  ? "✓ Funds released to instructor"
-                  : `${5 - escrow.paidCount} more enrollments needed`}
+                {effectiveReleased30
+                  ? "Funds released to instructor"
+                  : `${Math.max(0, 5 - effectivePaidCount)} more enrollments needed`}
               </p>
+              {chainSnapshot &&
+                escrow.paidCount >= 5 &&
+                chainSnapshot.paidCount < 5 &&
+                !effectiveReleased30 && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-800 dark:text-amber-200">
+                    <p className="font-semibold mb-1">On-chain escrow state is behind your DB</p>
+                    <p>
+                      Off-chain enrollments: <span className="font-semibold">{escrow.paidCount}</span> | On-chain paidCount:{" "}
+                      <span className="font-semibold">{chainSnapshot.paidCount}</span>. Withdrawals require on-chain paidCount = 5.
+                    </p>
+                    <button
+                      onClick={handleDevAddPaymentZero}
+                      disabled={devFixBusy || txStatus.type !== "idle" || !walletReady}
+                      className="mt-2 w-full px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold"
+                    >
+                      {devFixBusy
+                        ? "Submitting..."
+                        : `Dev fix: increment on-chain paidCount (${chainSnapshot.paidCount}/5)`}
+                    </button>
+                  </div>
+                )}
               <button
                 onClick={() => handleWithdraw("30")}
                 disabled={!canWithdraw30 || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
-                {escrow.released30
+                {effectiveReleased30
                   ? "Already Released"
                   : canWithdraw30
-                  ? `Withdraw ${toAda(Math.floor(escrow.netTotal * 0.3))} ADA`
-                  : `Locked (${escrow.paidCount}/5)`}
+                  ? `Withdraw ${
+                      chainSnapshot
+                        ? toAdaFromBig((BigInt(chainSnapshot.lockedLovelace) * 30n) / 100n)
+                        : toAda(Math.floor(escrow.netTotal * 0.3))
+                    } ADA`
+                  : `Locked (${effectivePaidCount}/5)`}
               </button>
             </div>
           </div>
@@ -810,9 +1168,9 @@ export default function EscrowWithdrawalDashboard() {
                   60% engagement metrics
                 </p>
               </div>
-              {escrow.released40 && (
+              {effectiveReleased40 && (
                 <span className="px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold">
-                  ✓ Complete
+                  Complete
                 </span>
               )}
             </div>
@@ -831,7 +1189,7 @@ export default function EscrowWithdrawalDashboard() {
                     Avg Rating:
                   </span>
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {engagement.avgRating.toFixed(1)}/10 ★
+                    {engagement.avgRating.toFixed(1)}/10
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -852,10 +1210,10 @@ export default function EscrowWithdrawalDashboard() {
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 Engagement Score: {engagement.engagementScore}/100
               </p>
-              {!escrow.released40 && (
+              {!effectiveReleased40 && (
                 <button
                   onClick={handleEvaluate40}
-                  disabled={!escrow.released30 || txStatus.type !== "idle"}
+                  disabled={!effectiveReleased30 || txStatus.type !== "idle"}
                   className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors mb-2"
                 >
                   Evaluate Metrics
@@ -866,7 +1224,7 @@ export default function EscrowWithdrawalDashboard() {
                 disabled={!canWithdraw40 || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
-                {escrow.released40
+                {effectiveReleased40
                   ? "Already Released"
                   : canWithdraw40
                   ? `Withdraw ${toAda(Math.floor(escrow.netTotal * 0.4))} ADA`
@@ -886,7 +1244,7 @@ export default function EscrowWithdrawalDashboard() {
                   After 14 days, no dispute
                 </p>
               </div>
-              {escrow.releasedFinal && (
+              {effectiveReleasedFinal && (
                 <span className="px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-semibold">
                   Released
                 </span>
@@ -898,7 +1256,7 @@ export default function EscrowWithdrawalDashboard() {
                   Time Remaining:
                 </span>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {escrow.releasedFinal ? "Complete" : `${daysRemaining} days`}
+                  {effectiveReleasedFinal ? "Complete" : `${daysRemaining} days`}
                 </span>
               </div>
               <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -906,7 +1264,7 @@ export default function EscrowWithdrawalDashboard() {
                   className="h-full bg-purple-500 transition-all duration-500"
                   style={{
                     width: `${
-                      escrow.releasedFinal
+                      effectiveReleasedFinal
                         ? 100
                         : Math.min(((14 - daysRemaining) / 14) * 100, 100)
                     }%`,
@@ -918,7 +1276,7 @@ export default function EscrowWithdrawalDashboard() {
                 disabled={!canWithdrawFinal || txStatus.type !== "idle" || !walletReady}
                 className="w-full px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold transition-colors"
               >
-                {escrow.releasedFinal
+                {effectiveReleasedFinal
                   ? "Already Released"
                   : canWithdrawFinal
                   ? `Withdraw ${toAda(escrow.netTotal)} ADA`

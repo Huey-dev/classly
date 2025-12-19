@@ -29,7 +29,7 @@ export const Header = ({
     let active = true;
     (async () => {
       try {
-        const res = await fetch("/api/me");
+        const res = await fetch("/api/me", { credentials: "include" });
         if (!res.ok) return;
         const data = await res.json();
         if (active) setUser({ name: data?.name, image: data?.image });

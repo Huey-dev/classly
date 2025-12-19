@@ -29,6 +29,7 @@ const REPUTATION_TITLE = "reputation.validator";
 let cachedPlutus: PlutusBundle | null = null;
 
 export const EscrowDatumSchema = Data.Object({
+  courseId: Data.Bytes(),
   receiver: Data.Bytes(),
   oracle: Data.Bytes(),
   netTotal: Data.Integer(),
@@ -49,19 +50,21 @@ export type EscrowDatum = Data.Static<typeof EscrowDatumSchema>;
 
 export const EscrowRedeemerSchema = Data.Enum([
   Data.Object({
-    AddPayment: Data.Object({
-      netAmount: Data.Integer(),
-      watchMet: Data.Boolean(),
-      ratingX10: Data.Integer(),
-      commented: Data.Boolean(),
-      firstWatchAt: Data.Integer(),
-    }),
+    AddPayment: Data.Tuple([
+      Data.Object({
+        net_amount: Data.Integer(),
+        watch_met: Data.Boolean(),
+        rating_x10: Data.Integer(),
+        commented: Data.Boolean(),
+        first_watch_at: Data.Integer(),
+      }),
+    ]),
   }),
-  Data.Literal("ReleaseInitial"),
-  Data.Literal("ReleaseMetrics40"),
-  Data.Literal("ReleaseFinal"),
-  Data.Literal("Refund"),
-  Data.Literal("DisputeHold"),
+  Data.Object({ ReleaseInitial: Data.Tuple([]) }),
+  Data.Object({ ReleaseMetrics40: Data.Tuple([]) }),
+  Data.Object({ ReleaseFinal: Data.Tuple([]) }),
+  Data.Object({ Refund: Data.Tuple([]) }),
+  Data.Object({ DisputeHold: Data.Tuple([]) }),
 ]);
 
 export type EscrowRedeemer = Data.Static<typeof EscrowRedeemerSchema>;

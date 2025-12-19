@@ -1,4 +1,6 @@
 import { getAddressDetails } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { EscrowDatum } from "./contracts";
 
 type Bigish = bigint | number | string | null | undefined;
@@ -18,10 +20,14 @@ export function formatAda(lovelace: Bigish, decimals = 4): string {
   return ada.toFixed(decimals);
 }
 
-export function secondsUntil(targetUnixSeconds: Bigish): number {
-  const target = Number(toBigInt(targetUnixSeconds));
-  const now = Math.floor(Date.now() / 1000);
-  return Math.max(0, target - now);
+export function secondsUntil(targetUnixSecondsOrMs: Bigish): number {
+  const raw = toBigInt(targetUnixSecondsOrMs);
+  if (raw <= 0n) return 0;
+  // Heuristic: seconds are ~10 digits; ms are ~13 digits.
+  const targetMs = raw < 10_000_000_000n ? raw * 1000n : raw;
+  const nowMs = BigInt(Date.now());
+  if (targetMs <= nowMs) return 0;
+  return Number((targetMs - nowMs) / 1000n);
 }
 
 /**
@@ -103,6 +109,16 @@ export function computeAddPaymentTransition(
   };
 
   return { newDatum, immediatePayout };
+}
+
+/**
+ * Compute the on-chain course_id ByteArray used in the datum.
+ * Uses blake2b-256 over UTF-8 bytes of the courseId and returns a hex string.
+ */
+export function hashCourseId(courseId: string): string {
+  const bytes = utf8ToBytes(courseId);
+  const digest = blake2b(bytes, { dkLen: 32 });
+  return bytesToHex(digest);
 }
 
 export function breakdownFromDatum(datum: Partial<EscrowDatum> | null) {

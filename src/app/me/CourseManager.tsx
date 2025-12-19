@@ -1,6 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Data } from "@lucid-evolution/lucid";
+import {
+  EscrowDatumSchema,
+  getEscrowAddress,
+  resolveNetwork,
+} from "../lib/contracts";
+import { hashCourseId, normalizePkh } from "../lib/escrow-utils";
 import { useLucid } from "../context/LucidContext";
 
 type Course = {
@@ -24,12 +31,13 @@ type Video = {
 };
 
 export default function CourseManager() {
-  const { walletAddress } = useLucid();
+  const { walletAddress, lucid } = useLucid();
   const [courses, setCourses] = useState<Course[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [initializingEscrow, setInitializingEscrow] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCover, setNewCover] = useState("");
@@ -54,9 +62,88 @@ export default function CourseManager() {
     }
   };
 
+  const initializeEscrow = async (courseId: string) => {
+    if (!lucid || !walletAddress) {
+      throw new Error("Connect your payout wallet to initialize escrow.");
+    }
+    const oraclePkhEnv = process.env.NEXT_PUBLIC_ORACLE_PKH;
+    if (!oraclePkhEnv) {
+      throw new Error("Oracle PKH is not configured (NEXT_PUBLIC_ORACLE_PKH).");
+    }
+
+    setInitializingEscrow(true);
+    try {
+      const courseIdHash = hashCourseId(courseId);
+      const receiverPkh = normalizePkh(walletAddress, "Payout wallet");
+      const oraclePkh = normalizePkh(oraclePkhEnv, "Oracle PKH");
+      const scriptAddress = await getEscrowAddress(lucid, resolveNetwork());
+      const minAda = 2_000_000n; // keep the script alive with a minimal UTxO
+      const datum = {
+        courseId: courseIdHash,
+        receiver: receiverPkh,
+        oracle: oraclePkh,
+        netTotal: 0n,
+        paidCount: 0n,
+        paidOut: 0n,
+        released30: false,
+        released40: false,
+        releasedFinal: false,
+        comments: 0n,
+        ratingSum: 0n,
+        ratingCount: 0n,
+        allWatchMet: true,
+        firstWatch: 0n,
+        disputeBy: BigInt(Date.now()) + 14n * 24n * 60n * 60n * 1000n,
+      };
+
+      const tx = await lucid
+        .newTx()
+        .pay.ToContract(
+          scriptAddress,
+          { kind: "inline", value: Data.to(datum as any, EscrowDatumSchema) },
+          { lovelace: minAda }
+        )
+        .complete();
+
+      const signed = await tx.sign.withWallet().complete();
+      const hash = await signed.submit();
+
+      await fetch("/api/escrow/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId,
+          courseIdHash,
+          receiverPkh,
+          oraclePkh,
+          scriptAddress,
+          netTotal: 0,
+          paidCount: 0,
+          paidOut: 0,
+          released30: false,
+          released40: false,
+          releasedFinal: false,
+          status: "PENDING",
+        }),
+      });
+
+      setMessage((prev) =>
+        [prev, `Escrow initialized. Tx: ${hash.slice(0, 10)}...`]
+          .filter(Boolean)
+          .join(" ")
+      );
+    } finally {
+      setInitializingEscrow(false);
+    }
+  };
+
   const createCourse = async () => {
     if (!newTitle.trim()) {
       setMessage("Course title is required");
+      return;
+    }
+    if (newPrice && (!lucid || !walletAddress)) {
+      setMessage("Connect your payout wallet before creating a paid course so escrow can be initialized.");
       return;
     }
     setCreating(true);
@@ -78,6 +165,15 @@ export default function CourseManager() {
         throw new Error(data.error || "Failed to create course");
       }
       const course = await res.json();
+
+      if (course.isPaid) {
+        try {
+          await initializeEscrow(course.id);
+        } catch (escrowErr: any) {
+          setMessage(escrowErr?.message || "Course created, but escrow initialization failed. Open the course page and initialize escrow.");
+        }
+      }
+
       setCourses((prev) => [course, ...prev]);
       setSelectedCourse(course.id);
       setNewTitle("");
@@ -177,21 +273,23 @@ export default function CourseManager() {
             type="number"
             min={0}
             step="0.01"
-            value={newPrice}
-            onChange={(e) => setNewPrice(e.target.value)}
-            placeholder="Price in ADA (leave blank for free)"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            disabled={creating}
-          />
-          <button
-            onClick={createCourse}
-            disabled={creating}
-            className={`w-full px-3 py-2 rounded-lg font-semibold ${
-              creating ? "bg-gray-200 text-gray-500" : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
-          >
-            {creating ? "Creating..." : "Create course"}
-          </button>
+          value={newPrice}
+          onChange={(e) => setNewPrice(e.target.value)}
+          placeholder="Price in ADA (leave blank for free)"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+          disabled={creating}
+        />
+        <button
+          onClick={createCourse}
+          disabled={creating || initializingEscrow}
+          className={`w-full px-3 py-2 rounded-lg font-semibold ${
+            creating || initializingEscrow
+              ? "bg-gray-200 text-gray-500"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          {creating || initializingEscrow ? "Creating..." : "Create course"}
+        </button>
           <p className="text-[11px] text-gray-500">
             Courses publish automatically on creation and use your connected wallet for payouts.
           </p>

@@ -75,45 +75,78 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Note: We still keep this "unchecked" input for demo speed,
-    // but we now control who can write it.
-    const data: Prisma.EscrowUncheckedCreateInput = {
-      courseId,
-      teacherId: body.teacherId ?? null,
-      studentId: body.studentId ?? null,
-      adaAmount: body.adaAmount ? new Prisma.Decimal(body.adaAmount) : new Prisma.Decimal(0),
+    // IMPORTANT: This endpoint must be PATCH-like.
+    // If the client omits a field, we MUST NOT overwrite it in the DB.
+    const updateData: Prisma.EscrowUncheckedUpdateInput = {};
 
-      receiverPkh: body.receiverPkh ?? null,
-      oraclePkh: body.oraclePkh ?? null,
-      scriptAddress: body.scriptAddress ?? null,
+    if (body.teacherId !== undefined) updateData.teacherId = body.teacherId ?? null;
+    if (body.studentId !== undefined) updateData.studentId = body.studentId ?? null;
 
-      netTotal: body.netTotal ? new Prisma.Decimal(body.netTotal) : new Prisma.Decimal(0),
-      paidCount: typeof body.paidCount === "number" ? body.paidCount : 0,
-      paidOut: body.paidOut ? new Prisma.Decimal(body.paidOut) : new Prisma.Decimal(0),
+    if (body.adaAmount !== undefined) {
+      updateData.adaAmount = new Prisma.Decimal(body.adaAmount ?? 0);
+    }
 
-      released30: !!body.released30,
-      released40: !!body.released40,
-      releasedFinal: !!body.releasedFinal,
+    if (body.receiverPkh !== undefined) updateData.receiverPkh = body.receiverPkh ?? null;
+    if (body.oraclePkh !== undefined) updateData.oraclePkh = body.oraclePkh ?? null;
+    if (body.scriptAddress !== undefined) updateData.scriptAddress = body.scriptAddress ?? null;
+    if (body.courseIdHash !== undefined) updateData.courseIdHash = body.courseIdHash ?? null;
 
-      comments: typeof body.comments === "number" ? body.comments : 0,
-      ratingSum: typeof body.ratingSum === "number" ? body.ratingSum : 0,
-      ratingCount: typeof body.ratingCount === "number" ? body.ratingCount : 0,
+    if (body.netTotal !== undefined) updateData.netTotal = new Prisma.Decimal(body.netTotal ?? 0);
+    if (typeof body.paidCount === "number") updateData.paidCount = body.paidCount;
+    if (body.paidOut !== undefined) updateData.paidOut = new Prisma.Decimal(body.paidOut ?? 0);
 
-      allWatchMet: typeof body.allWatchMet === "boolean" ? body.allWatchMet : true,
+    if (typeof body.released30 === "boolean") updateData.released30 = body.released30;
+    if (typeof body.released40 === "boolean") updateData.released40 = body.released40;
+    if (typeof body.releasedFinal === "boolean") updateData.releasedFinal = body.releasedFinal;
 
-      // BigInt fields must be coerced safely
-      firstWatch: BigInt(body.firstWatch ?? 0),
-      disputeBy: BigInt(body.disputeBy ?? 0),
+    if (typeof body.comments === "number") updateData.comments = body.comments;
+    if (typeof body.ratingSum === "number") updateData.ratingSum = body.ratingSum;
+    if (typeof body.ratingCount === "number") updateData.ratingCount = body.ratingCount;
 
-      status: typeof body.status === "string" ? body.status : "PENDING",
-    } satisfies Parameters<typeof prisma.escrow.create>[0]["data"];
+    if (typeof body.allWatchMet === "boolean") updateData.allWatchMet = body.allWatchMet;
+
+    if (body.firstWatch !== undefined) updateData.firstWatch = BigInt(body.firstWatch ?? 0);
+    if (body.disputeBy !== undefined) updateData.disputeBy = BigInt(body.disputeBy ?? 0);
+
+    if (typeof body.status === "string") updateData.status = body.status;
 
     // Upsert by courseId (since courseId is not unique in schema)
     const existing = await prisma.escrow.findFirst({ where: { courseId } });
 
     const escrow = existing
-      ? await prisma.escrow.update({ where: { id: existing.id }, data })
-      : await prisma.escrow.create({ data });
+      ? await prisma.escrow.update({ where: { id: existing.id }, data: updateData })
+      : await prisma.escrow.create({
+          data: {
+            courseId,
+            teacherId: body.teacherId ?? null,
+            studentId: body.studentId ?? null,
+            adaAmount: new Prisma.Decimal(body.adaAmount ?? 0),
+
+            receiverPkh: body.receiverPkh ?? null,
+            oraclePkh: body.oraclePkh ?? null,
+            scriptAddress: body.scriptAddress ?? null,
+            courseIdHash: body.courseIdHash ?? null,
+
+            netTotal: new Prisma.Decimal(body.netTotal ?? 0),
+            paidCount: typeof body.paidCount === "number" ? body.paidCount : 0,
+            paidOut: new Prisma.Decimal(body.paidOut ?? 0),
+
+            released30: !!body.released30,
+            released40: !!body.released40,
+            releasedFinal: !!body.releasedFinal,
+
+            comments: typeof body.comments === "number" ? body.comments : 0,
+            ratingSum: typeof body.ratingSum === "number" ? body.ratingSum : 0,
+            ratingCount: typeof body.ratingCount === "number" ? body.ratingCount : 0,
+
+            allWatchMet: typeof body.allWatchMet === "boolean" ? body.allWatchMet : true,
+
+            firstWatch: BigInt(body.firstWatch ?? 0),
+            disputeBy: BigInt(body.disputeBy ?? 0),
+
+            status: typeof body.status === "string" ? body.status : "PENDING",
+          } satisfies Prisma.EscrowUncheckedCreateInput,
+        });
 
     return NextResponse.json({ escrow: serializeEscrow(escrow) });
   } catch (e: any) {

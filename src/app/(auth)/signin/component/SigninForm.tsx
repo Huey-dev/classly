@@ -94,7 +94,7 @@ export default function SignInForm({
         disabled={loading}
         className="w-full bg-[#2d68f8] text-white py-3 rounded-lg disabled:opacity-50 font-semibold shadow-md hover:shadow-lg transition"
       >
-        {loading ? "Signing in..." : "Login"}
+        {loading ? "Signing in..." : "Sign in"}
       </button>
     </form>
   );

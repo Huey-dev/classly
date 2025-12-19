@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
 import { getUserFromRequest } from "../../../../../lib/auth/getUserFromRequest";
+import { hashCourseId } from "../../../lib/escrow-utils";
 
 /**
  * POST /api/escrow/pay
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
   const scriptAddress = typeof body.scriptAddress === "string" ? body.scriptAddress.trim() : null;
   const receiverPkh = typeof body.receiverPkh === "string" ? body.receiverPkh.trim() : null;
   const oraclePkh = typeof body.oraclePkh === "string" ? body.oraclePkh.trim() : null;
+  const courseIdHash = courseId ? hashCourseId(courseId) : null;
 
   if (!courseId || netAmount <= 0) {
     return NextResponse.json(
@@ -68,44 +70,29 @@ export async function POST(req: NextRequest) {
     });
   }
 
- // Update or create the escrow row. Because courseId is not unique in your schema,
+// Update or create the escrow row. Because courseId is not unique in your schema,
   // we must find the existing escrow row by courseId first; if it exists, update
   // it by incrementing netTotal and paidCount; otherwise create a new row.
   const existingEscrow = await prisma.escrow.findFirst({ where: { courseId } });
-  let escrow;
   if (!existingEscrow) {
-    escrow = await prisma.escrow.create({
-      data: {
-        courseId,
-        netTotal: netAmount,
-        paidCount: 1,
-        paidOut: 0,
-        released30: false,
-        released40: false,
-        releasedFinal: false,
-        comments: 0,
-        ratingSum: 0,
-        ratingCount: 0,
-        allWatchMet: true,
-        firstWatch: BigInt(Math.floor(Date.now() / 1000)),
-        disputeBy: BigInt(Math.floor(Date.now() / 1000) + 14 * 86400),
-        scriptAddress: scriptAddress || null,
-        receiverPkh: receiverPkh || null,
-        oraclePkh: oraclePkh || null,
-      },
-    });
-  } else {
-    escrow = await prisma.escrow.update({
-      where: { id: existingEscrow.id },
-      data: {
-        netTotal: { increment: netAmount },
-        paidCount: { increment: 1 },
-        ...(scriptAddress ? { scriptAddress } : {}),
-        ...(receiverPkh ? { receiverPkh } : {}),
-        ...(oraclePkh ? { oraclePkh } : {}),
-      },
-    });
+    return NextResponse.json(
+      { error: "Escrow not initialized for this course. Initialize on-chain first." },
+      { status: 400 }
+    );
   }
+
+  const existingHash = (existingEscrow as any).courseIdHash as string | null | undefined;
+  const escrow = await prisma.escrow.update({
+    where: { id: existingEscrow.id },
+    data: {
+      netTotal: { increment: netAmount },
+      paidCount: { increment: 1 },
+      ...(scriptAddress ? { scriptAddress } : {}),
+      ...(receiverPkh ? { receiverPkh } : {}),
+      ...(oraclePkh ? { oraclePkh } : {}),
+      ...(courseIdHash && !existingHash ? { courseIdHash } : {}),
+    },
+  });
 
   // Return a lean payload
   return NextResponse.json({

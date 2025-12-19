@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLucid } from '../../context/LucidContext';
-import { normalizePkh } from '../../lib/escrow-utils';
+import { normalizePkh, hashCourseId } from '../../lib/escrow-utils';
+import { Data } from "@lucid-evolution/lucid";
+import {
+  EscrowDatumSchema,
+  EscrowRedeemerSchema,
+  getEscrowAddress,
+  getEscrowValidator,
+  resolveNetwork,
+} from "../../lib/contracts";
 
 /**
  * CheckoutClient
@@ -106,7 +114,7 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       return;
     }
     try {
-      const meRes = await fetch('/api/me');
+      const meRes = await fetch('/api/me', { credentials: "include" });
       const meJson = meRes.ok ? await meRes.json() : null;
       if (!meRes.ok || !meJson?.id) {
         setLastError('Please sign in before paying and enrolling.');
@@ -142,43 +150,94 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       }
 
       // 2. Load Lucid modules dynamically (client‑side only)
-      const [lucidModule, contractsModule] = await Promise.all([
-        import('@lucid-evolution/lucid'),
-        import('../../lib/contracts'),
-      ]);
-      const { Data } = lucidModule;
-      const { EscrowDatumSchema, getEscrowAddress, resolveNetwork } = contractsModule;
+    
 
       // 3. Compute script address and PKHs
       const scriptAddress = await getEscrowAddress(lucid, resolveNetwork());
+      console.log(scriptAddress);
       const receiver = normalizePkh(receiverWallet, 'Instructor wallet');
       const oraclePkhEnv = process.env.NEXT_PUBLIC_ORACLE_PKH;
       if (!oraclePkhEnv) throw new Error('Oracle PKH not configured');
       const oracle = normalizePkh(oraclePkhEnv, 'Oracle key hash');
+      const validatorScript = await getEscrowValidator();
+      const validator = { type: 'PlutusV3' as const, script: validatorScript };
+      const EscrowDatum = EscrowDatumSchema as any;
+      const EscrowRedeemer = EscrowRedeemerSchema as any;
 
-      // 4. Build escrow datum for on‑chain storage
-      const datum = {
-        receiver,
-        oracle,
-        netTotal: netLovelace,
-        paidCount: 1n,
-        paidOut: 0n,
-        released30: false,
-        released40: false,
-        releasedFinal: false,
-        comments: 0n,
-        ratingSum: 0n,
-        ratingCount: 0n,
-        allWatchMet: false,
-        firstWatch: BigInt(Math.floor(Date.now() / 1000)),
-        disputeBy: BigInt(Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60),
-      } as const;
+      // Validator expects POSIX milliseconds (see escrow.ak).
+      const now = BigInt(Date.now());
 
-      // 5. Build and submit transaction to the script
-      const tx = await lucid
+      // 4. Find existing escrow UTxO for THIS course (course_id hash). No creation fallback.
+      const courseIdHash = hashCourseId(courseId);
+      const existingUtxos = await lucid.utxosAt(scriptAddress);
+
+      const matching = existingUtxos.flatMap((u) => {
+        if (!u.datum) return [];
+        try {
+          const d = Data.from(u.datum, EscrowDatumSchema) as any;
+          if (String(d?.courseId ?? "") !== courseIdHash) return [];
+          if (String(d?.receiver ?? "") !== receiver) return [];
+          if (String(d?.oracle ?? "") !== oracle) return [];
+          return [{ utxo: u, datum: d }];
+        } catch {
+          return [];
+        }
+      });
+
+      if (matching.length === 0) {
+        throw new Error("Escrow not initialized for this course. Initialize the course escrow on-chain first, then retry.");
+      }
+
+      // 5. Build and submit transaction to the script (mutate existing escrow)
+      const chosen = matching.sort((a, b) => {
+        const aCount = Number(a.datum?.paidCount ?? 0n);
+        const bCount = Number(b.datum?.paidCount ?? 0n);
+        if (bCount !== aCount) return bCount - aCount;
+        const aNet = Number(a.datum?.netTotal ?? 0n);
+        const bNet = Number(b.datum?.netTotal ?? 0n);
+        return bNet - aNet;
+      })[0];
+
+      const current = chosen.datum;
+      const newDatum = {
+        ...current,
+        netTotal: BigInt(current?.netTotal ?? 0n) + netLovelace,
+        paidCount: BigInt(current?.paidCount ?? 0n) + 1n,
+        firstWatch:
+          BigInt(current?.firstWatch ?? 0n) === 0n ? now : BigInt(current?.firstWatch ?? 0n),
+        disputeBy:
+          BigInt(current?.disputeBy ?? 0n) === 0n
+            ? now + 14n * 24n * 60n * 60n * 1000n
+            : BigInt(current?.disputeBy ?? 0n),
+        courseId: current.courseId,
+      };
+
+      const redeemer = Data.to(
+        {
+          AddPayment: [
+            {
+              net_amount: netLovelace,
+              watch_met: false,
+              rating_x10: 0n,
+              commented: false,
+              first_watch_at: now,
+            },
+          ],
+        } as any,
+        EscrowRedeemer
+      );
+
+      let txBuilder = lucid
         .newTx()
-        .pay.ToContract(scriptAddress, { kind: 'inline', value: Data.to(datum as any, EscrowDatumSchema) }, { lovelace: netLovelace })
-        .complete();
+        .collectFrom([chosen.utxo], redeemer)
+        .attach.SpendingValidator(validator)
+        .pay.ToContract(
+          scriptAddress,
+          { kind: 'inline', value: Data.to(newDatum as any, EscrowDatum) },
+          { lovelace: BigInt(newDatum.netTotal) }
+        );
+
+      const tx = await txBuilder.complete();
       const signed = await tx.sign.withWallet().complete();
       const hash = await signed.submit();
       setTxHash(hash);
@@ -191,9 +250,10 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       const createRes = await fetch('/api/escrow/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: "include",
         body: JSON.stringify({
           courseId,
-          netAmount: datum.netTotal.toString(),
+          netAmount: netLovelace.toString(),
           scriptAddress,
           receiverPkh: receiver,
           oraclePkh: oracle,
@@ -203,7 +263,7 @@ export function CheckoutClient({ courseId }: { courseId: string }) {
       if (!createRes.ok) throw new Error('Failed to record payment. Your on-chain tx is submitted; contact support.');
 
       // 8. Enroll the student (idempotent)
-      const enrollRes = await fetch(`/api/courses/${courseId}/enroll`, { method: 'POST' });
+      const enrollRes = await fetch(`/api/courses/${courseId}/enroll`, { method: 'POST', credentials: "include" });
       if (enrollRes.status === 401) throw new Error('Please sign in to complete enrollment.');
       if (!enrollRes.ok) throw new Error('Payment recorded but enrollment failed. Please contact support.');
 

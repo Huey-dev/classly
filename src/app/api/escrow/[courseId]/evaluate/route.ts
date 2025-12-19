@@ -102,13 +102,15 @@ export async function GET(
   /* ---------------------------------------------
    * 6. Final 30% (time-locked)
    * --------------------------------------------- */
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const normalizeUnixMs = (value: bigint) =>
+    value > 0n && value < 10_000_000_000n ? value * 1000n : value;
+  const nowMs = BigInt(Date.now());
 
   const final30Eligible =
     escrow.released40 &&
     !escrow.releasedFinal &&
     escrow.disputeBy !== null &&
-    nowSeconds >= escrow.disputeBy;
+    nowMs >= normalizeUnixMs(BigInt(escrow.disputeBy));
 
   /* ---------------------------------------------
    * 7. Return oracle result

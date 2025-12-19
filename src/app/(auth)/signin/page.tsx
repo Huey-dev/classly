@@ -24,6 +24,7 @@ const Page = () => {
       const response = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(formData),
       });
 
@@ -31,11 +32,11 @@ const Page = () => {
 
       if (response.ok) {
         setSuccess(true);
-        console.log("Signup successful:", data);
+        console.log("Signin successful:", data);
         router.push("/");
         // Optionally redirect or show a success message
       } else {
-        setError(data.error || "Signup failed");
+        setError(data.error || "Signin failed");
       }
     } catch (err) {
       setError("Something went wrong");

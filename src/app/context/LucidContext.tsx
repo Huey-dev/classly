@@ -16,11 +16,13 @@ interface LucidContextType {
   balance: number | null;
   seedPhrase: string | null;
   connecting: boolean;
+  toppingUp: boolean;
   loading: boolean;
   error: string | null;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   refreshBalance: () => Promise<void>;
+  requestTopup: (opts?: { ada?: number }) => Promise<void>;
 }
 
 const LucidContext = createContext<LucidContextType>({
@@ -29,11 +31,13 @@ const LucidContext = createContext<LucidContextType>({
   balance: null,
   seedPhrase: null,
   connecting: false,
+  toppingUp: false,
   loading: true,
   error: null,
   connectWallet: async () => {},
   disconnectWallet: () => {},
   refreshBalance: async () => {},
+  requestTopup: async () => {},
 });
 
 const STORAGE_KEY_BASE = "classly_dev_wallet_seed";
@@ -68,10 +72,14 @@ export function LucidProvider({ children }: { children: ReactNode }) {
   const [balance, setBalance] = useState<number | null>(null);
   const [seedPhrase, setSeedPhrase] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [toppingUp, setToppingUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userKey, setUserKey] = useState<string | null>(null);
   const [profileWallet, setProfileWallet] = useState<string | null>(null);
+  const [autoTopupAttempted, setAutoTopupAttempted] = useState(false);
+  const [lastTopupAt, setLastTopupAt] = useState<number | null>(null);
+  const [lastTopupTxHash, setLastTopupTxHash] = useState<string | null>(null);
 
   const BF_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY;
 
@@ -81,7 +89,13 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         const utxos = await client.wallet().getUtxos();
         if (!Array.isArray(utxos) || utxos.length === 0) {
           setBalance(0);
-          setError("Wallet not yet on-chain. Fund from faucet, then refresh.");
+          // Don't overwrite a more specific top-up error, and don't spam the user while a top-up is pending.
+          const topupPending = lastTopupAt ? Date.now() - lastTopupAt < 90_000 : false;
+          if (topupPending) {
+            setError((prev) => prev || "Top-up pending on-chain. Give it a minute, then refresh.");
+          } else {
+            setError((prev) => prev || "Wallet not yet on-chain. Fund from faucet, then refresh.");
+          }
           return;
         }
 
@@ -110,7 +124,12 @@ export function LucidProvider({ children }: { children: ReactNode }) {
           );
         } else if (isAddressUnseenError(err)) {
           setBalance(0);
-          setError("Wallet not yet on-chain. Send test ADA from faucet, then refresh.");
+          const topupPending = lastTopupAt ? Date.now() - lastTopupAt < 90_000 : false;
+          if (topupPending) {
+            setError((prev) => prev || "Top-up pending on-chain. Give it a minute, then refresh.");
+          } else {
+            setError((prev) => prev || "Wallet not yet on-chain. Send test ADA from faucet, then refresh.");
+          }
         } else {
           console.error("Failed to fetch balance:", err);
           setBalance(0);
@@ -118,7 +137,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    []
+    [lastTopupAt]
   );
 
   useEffect(() => {
@@ -141,6 +160,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         // ignore and fall back to anon
       }
       setUserKey("anon");
+      setProfileWallet(null);
     })();
   }, []);
 
@@ -151,6 +171,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
+        setAutoTopupAttempted(false);
         if (!BF_KEY || BF_KEY.length === 0) {
           throw new Error(
             "NEXT_PUBLIC_BLOCKFROST_API_KEY is not set. Add it to your .env.local and restart dev server."
@@ -235,6 +256,56 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     await fetchAndSetBalance(lucid);
   }, [fetchAndSetBalance, lucid]);
 
+  const requestTopup = useCallback(
+    async (opts?: { ada?: number }) => {
+      if (!walletAddress) {
+        setError("Wallet not connected");
+        return;
+      }
+      setToppingUp(true);
+      setLastTopupAt(Date.now());
+      setLastTopupTxHash(null);
+      try {
+        const res = await fetch("/api/faucet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ address: walletAddress, ada: opts?.ada }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || "Top-up failed");
+        if (json?.txHash) {
+          setLastTopupTxHash(String(json.txHash));
+          setError(`Top-up submitted: ${String(json.txHash).slice(0, 12)}...`);
+        } else {
+          setError(null);
+        }
+        // Give the network a moment then refresh
+        await new Promise((r) => setTimeout(r, 2500));
+        await refreshBalance();
+      } catch (e: any) {
+        setError(`Top-up failed: ${e?.message || "unknown error"}`);
+      } finally {
+        setToppingUp(false);
+      }
+    },
+    [refreshBalance, walletAddress]
+  );
+
+  // Auto top-up new/empty wallets on testnet so users can pay fees.
+  useEffect(() => {
+    if (autoTopupAttempted) return;
+    if (!walletAddress || !lucid) return;
+    // Faucet endpoint requires auth; don't auto-trigger for anonymous sessions.
+    if (!userKey || userKey === "anon") return;
+    if (BLOCKFROST_LUCID_NETWORK === "Mainnet") return;
+    if (typeof balance !== "number") return;
+    if (balance > 0) return;
+
+    setAutoTopupAttempted(true);
+    requestTopup({ ada: 5 }).catch(() => {});
+  }, [autoTopupAttempted, balance, lucid, requestTopup, walletAddress, userKey]);
+
   const connectWallet = useCallback(async () => {
     setConnecting(true);
     setLoading(true);
@@ -248,6 +319,9 @@ export function LucidProvider({ children }: { children: ReactNode }) {
     setLucid(null);
     setSeedPhrase(null);
     setError(null);
+    setAutoTopupAttempted(false);
+    setLastTopupAt(null);
+    setLastTopupTxHash(null);
 
     if (typeof window !== "undefined" && userKey) {
       localStorage.removeItem(`${ADDRESS_KEY_BASE}_${userKey}`);
@@ -265,11 +339,13 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         balance,
         seedPhrase,
         connecting,
+        toppingUp,
         loading,
         error,
         connectWallet,
         disconnectWallet,
         refreshBalance,
+        requestTopup,
       }}
     >
       {children}

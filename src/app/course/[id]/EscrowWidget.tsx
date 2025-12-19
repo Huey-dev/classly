@@ -13,7 +13,7 @@ import {
   getEscrowValidator,
   resolveNetwork,
 } from "../../lib/contracts";
-import { computeAddPaymentTransition, disputeCountdown, normalizePkh } from "../../lib/escrow-utils";
+import { computeAddPaymentTransition, disputeCountdown, normalizePkh, hashCourseId } from "../../lib/escrow-utils";
 import { useLucid } from "../../context/LucidContext";
 
 const formatCountdown = (val: any) => {
@@ -90,6 +90,7 @@ export function EscrowWidget({
   authorName,
 }: Props) {
   const { lucid, walletAddress, loading, error, connectWallet, balance } = useLucid();
+  const courseIdHash = hashCourseId(courseId);
   const router = useRouter();
   const [escrow, setEscrow] = useState<EscrowState | null>(null);
   const [grossAda, setGrossAda] = useState(initialGrossAda ?? priceAda ?? 1);
@@ -97,7 +98,8 @@ export function EscrowWidget({
   const [watchMet, setWatchMet] = useState(true);
   const [ratingX10, setRatingX10] = useState(80);
   const [commented, setCommented] = useState(true);
-  const [firstWatchAt, setFirstWatchAt] = useState<number>(Math.floor(Date.now() / 1000));
+  // Validator expects POSIX milliseconds (see escrow.ak).
+  const [firstWatchAt, setFirstWatchAt] = useState<number>(Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -146,83 +148,9 @@ export function EscrowWidget({
   }, [walletAddress, receiverAddress]);
 
   const handleCreate = async () => {
-    if (!lucid) {
-      await connectWallet();
-      return;
-    }
-    setSubmitting(true);
-    setLastError(null);
-    setTxHash(null);
-    try {
-      const receiverPkh =
-        escrow?.receiverPkh ||
-        (receiverAddress ? normalizePkh(receiverAddress, "Instructor wallet") : null);
-      if (!receiverPkh) {
-        throw new Error("Receiver wallet address (or PKH) is required before creating escrow.");
-      }
-      const oracleEnv = escrow?.oraclePkh || process.env.NEXT_PUBLIC_ORACLE_PKH;
-      if (!oracleEnv) {
-        throw new Error("Oracle payment key hash missing. Set NEXT_PUBLIC_ORACLE_PKH.");
-      }
-      const oraclePkh = normalizePkh(oracleEnv, "Oracle key hash");
-
-      const netAmount = calculateNetAmount(lovelaceAmount);
-      const datum: EscrowDatum = {
-        receiver: receiverPkh,
-        oracle: oraclePkh,
-        netTotal: netAmount,
-        paidCount: 1n,
-        paidOut: 0n,
-        released30: false,
-        released40: false,
-        releasedFinal: false,
-        comments: commented ? 1n : 0n,
-        ratingSum: BigInt(ratingX10),
-        ratingCount: ratingX10 > 0 ? 1n : 0n,
-        allWatchMet: watchMet,
-        firstWatch: BigInt(firstWatchAt),
-        disputeBy: BigInt(firstWatchAt + 14 * 24 * 60 * 60),
-      };
-
-      const scriptAddress = await getEscrowAddress(lucid, resolveNetwork());
-      const tx = await lucid
-        .newTx()
-        .pay.ToContract(
-          scriptAddress,
-          { kind: "inline", value: Data.to(datum as any, EscrowDatumSchema) },
-          { lovelace: netAmount }
-        )
-        .complete();
-      const signed = await tx.sign.withWallet().complete();
-      const hash = await signed.submit();
-      setTxHash(hash);
-      await syncEscrow(courseId, {
-        scriptAddress,
-        receiverPkh: datum.receiver,
-        oraclePkh: datum.oracle,
-        netTotal: datum.netTotal.toString(),
-        paidCount: Number(datum.paidCount),
-        paidOut: datum.paidOut.toString(),
-        released30: datum.released30,
-        released40: datum.released40,
-        releasedFinal: datum.releasedFinal,
-        comments: Number(datum.comments),
-        ratingSum: Number(datum.ratingSum),
-        ratingCount: Number(datum.ratingCount),
-        allWatchMet: datum.allWatchMet,
-        firstWatch: Number(datum.firstWatch),
-        disputeBy: Number(datum.disputeBy),
-        status: "PENDING",
-      });
-      await fetch(`/api/courses/${courseId}/enroll`, { method: "POST" }).catch(() => {});
-      const updated = await fetchEscrow(courseId);
-      setEscrow(updated);
-      router.push(`/course/${courseId}?paid=1`);
-    } catch (e: any) {
-      setLastError(e?.message || "Failed to create escrow");
-    } finally {
-      setSubmitting(false);
-    }
+    // Escrow creation is intentionally disabled here; it must be done once at course creation.
+    setLastError("Escrow creation is disabled here. Initialize escrow once during course creation, then use Add Payment to mutate it.");
+    return;
   };
 
   const handleAddPayment = async () => {
@@ -236,6 +164,7 @@ export function EscrowWidget({
       const scriptAddr = escrow.scriptAddress || (await getEscrowAddress(lucid, resolveNetwork()));
       const utxos = await lucid.utxosAt(scriptAddr);
       const currentDatum: EscrowDatum = {
+        courseId: courseIdHash,
         receiver: escrow.receiverPkh || "",
         oracle: escrow.oraclePkh || "",
         netTotal: BigInt(escrow.netTotal ?? 0),
@@ -259,13 +188,15 @@ export function EscrowWidget({
       });
 
       const redeemer: EscrowRedeemer = {
-        AddPayment: {
-          netAmount: netLovelace,
-          watchMet,
-          ratingX10: BigInt(ratingX10),
-          commented,
-          firstWatchAt: BigInt(firstWatchAt),
-        },
+        AddPayment: [
+          {
+            net_amount: netLovelace,
+            watch_met: watchMet,
+            rating_x10: BigInt(ratingX10),
+            commented,
+            first_watch_at: BigInt(firstWatchAt),
+          },
+        ],
       };
       const tx = await lucid
         .newTx()
@@ -317,7 +248,7 @@ export function EscrowWidget({
       const scriptAddr = escrow.scriptAddress || (await getEscrowAddress(lucid, resolveNetwork()));
       const utxos = await lucid.utxosAt(scriptAddr);
       const datum = escrow;
-      const redeemer: EscrowRedeemer = "ReleaseFinal";
+      const redeemer: EscrowRedeemer = { ReleaseFinal: [] };
       const tx = await lucid
         .newTx()
         .collectFrom(utxos, Data.to(redeemer as any, EscrowRedeemerSchema))
@@ -474,10 +405,11 @@ export function EscrowWidget({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleCreate}
-                disabled={submitting || !walletAddress}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold disabled:opacity-60"
+                disabled
+                className="px-4 py-2 rounded-lg bg-gray-400 text-white font-semibold cursor-not-allowed"
+                title="Escrow must be initialized once during course creation"
               >
-                {submitting ? "Processing..." : "Pay & Lock"}
+                Escrow creation disabled
               </button>
               <button
                 onClick={handleAddPayment}
