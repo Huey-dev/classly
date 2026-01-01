@@ -31,8 +31,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.email = user.email;
         // Preserve picture from OAuth provider so session has it later
         // (NextAuth doesn't automatically add it when using a custom jwt callback)
-        // @ts-expect-error picture is allowed on token
-        token.picture = (user as any).image || (user as any).picture || token.picture;
+        (token as any).picture = (user as any).image || (user as any).picture || (token as any).picture;
         token.hasOnboarded = (user as SessionUser).hasOnboarded ?? false;
       }
       return token;
@@ -53,9 +52,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       // Carry through picture into the session payload so avatars render
-      // @ts-expect-error picture is allowed on token
-      if (token?.picture && typeof token.picture === "string") {
-        user.image = token.picture;
+      const picture = (token as any)?.picture;
+      if (picture && typeof picture === "string") {
+        user.image = picture;
       }
 
       user.hasOnboarded = typeof token.hasOnboarded === "boolean" ? token.hasOnboarded : false;
