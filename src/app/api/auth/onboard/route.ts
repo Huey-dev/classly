@@ -1,10 +1,8 @@
 import { getUserFromRequest } from "../../../../../lib/auth/getUserFromRequest";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../../lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function PATCH() {
-  const prisma = new PrismaClient();
-
   const user = await getUserFromRequest();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
