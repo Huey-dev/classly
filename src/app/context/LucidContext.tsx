@@ -258,6 +258,10 @@ export function LucidProvider({ children }: { children: ReactNode }) {
 
   const requestTopup = useCallback(
     async (opts?: { ada?: number }) => {
+      if (!lucid) {
+        setError("Wallet not initialized");
+        return;
+      }
       if (!walletAddress) {
         setError("Wallet not connected");
         return;
@@ -265,6 +269,7 @@ export function LucidProvider({ children }: { children: ReactNode }) {
       setToppingUp(true);
       setLastTopupAt(Date.now());
       setLastTopupTxHash(null);
+      setError("Requesting test ADA… this can take up to ~60s to land.");
       try {
         const res = await fetch("/api/faucet", {
           method: "POST",
@@ -276,20 +281,48 @@ export function LucidProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(json?.error || "Top-up failed");
         if (json?.txHash) {
           setLastTopupTxHash(String(json.txHash));
-          setError(`Top-up submitted: ${String(json.txHash).slice(0, 12)}...`);
+          setError(`Top-up submitted: ${String(json.txHash).slice(0, 12)}... waiting for confirmation`);
         } else {
           setError(null);
         }
         // Give the network a moment then refresh
         await new Promise((r) => setTimeout(r, 2500));
         await refreshBalance();
+        // Retry a few times in the background so users don't have to manually refresh
+        for (let i = 0; i < 6; i++) {
+          await new Promise((r) => setTimeout(r, 8000));
+          await refreshBalance();
+          // Check directly from the wallet so we don't rely on stale state
+          try {
+            const utxos = await lucid.wallet().getUtxos();
+            const total = utxos.reduce((sum, u) => {
+              const raw = u.assets?.lovelace ?? 0;
+              try {
+                if (typeof raw === "bigint") return sum + raw;
+                if (typeof raw === "number") return sum + BigInt(raw);
+                if (typeof raw === "string") return sum + BigInt(raw);
+              } catch {
+                return sum;
+              }
+              return sum;
+            }, BigInt(0));
+            const ada = Number(total) / 1_000_000;
+            if (ada > 0) {
+              setBalance(Number(ada.toFixed(6)));
+              setError(null);
+              break;
+            }
+          } catch (err) {
+            console.warn("Balance check after top-up failed", err);
+          }
+        }
       } catch (e: any) {
         setError(`Top-up failed: ${e?.message || "unknown error"}`);
       } finally {
         setToppingUp(false);
       }
     },
-    [refreshBalance, walletAddress]
+    [lucid, refreshBalance, walletAddress]
   );
 
   // Auto top-up new/empty wallets on testnet so users can pay fees.

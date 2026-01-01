@@ -1,10 +1,8 @@
-import NextAuth from "next-auth";
-import { authConfig } from "./auth.config";
 import { NextResponse } from "next/server";
+import { auth } from "./auth";
 
 const privateRoutes = ["/dashboard", "/me", "/upload", "/course", "/profile/edit"];
 
-const { auth } = NextAuth(authConfig);
 export default auth(async (req) => {
   const isLoggedIn = !!req.auth;
   const { nextUrl } = req;

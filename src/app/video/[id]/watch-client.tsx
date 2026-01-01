@@ -81,6 +81,8 @@ export default function WatchClient({
   const [isEnrolled, setIsEnrolled] = useState(enrolled);
 
   const [playlistOpen, setPlaylistOpen] = useState(true);
+  const [playerState, setPlayerState] = useState<"loading" | "ready" | "error">("loading");
+  const [playerError, setPlayerError] = useState<string | null>(null);
 
   const isPaidCourse = Boolean(video.courseId && video.isPaidCourse);
 
@@ -147,6 +149,11 @@ export default function WatchClient({
     })();
 
   }, [video.id, video.likes]);
+
+  useEffect(() => {
+    setPlayerState("loading");
+    setPlayerError(null);
+  }, [video.id]);
 
 
 
@@ -288,7 +295,7 @@ export default function WatchClient({
 
         <section className="space-y-4">
 
-          <div className="rounded-2xl overflow-hidden bg-black shadow-xl">
+          <div className="rounded-2xl overflow-hidden bg-black shadow-xl relative">
 
             {isLocked ? (
 
@@ -322,19 +329,44 @@ export default function WatchClient({
 
             ) : (
 
-              <MuxPlayer
+              <>
+                <MuxPlayer
 
-                playbackId={video.muxPlaybackId ?? undefined}
+                  playbackId={video.muxPlaybackId ?? undefined}
 
-                streamType="on-demand"
+                  streamType="on-demand"
 
-                autoPlay
+                  autoPlay
 
-                accentColor="#2563eb"
+                  accentColor="#2563eb"
 
-                style={{ width: "100%", height: "100%" }}
+                  style={{ width: "100%", height: "100%" }}
+                  poster={
+                    isLikelyPlaybackId(video.muxPlaybackId)
+                      ? `https://image.mux.com/${video.muxPlaybackId}/thumbnail.jpg?time=1`
+                      : undefined
+                  }
+                  onLoadStart={() => setPlayerState("loading")}
+                  onCanPlay={() => setPlayerState("ready")}
+                  onError={(e) => {
+                    console.error("Mux player error", e);
+                    setPlayerState("error");
+                    setPlayerError("Slow network detected. Retrying the stream...");
+                    setTimeout(() => {
+                      setPlayerState((prev) => (prev === "error" ? "loading" : prev));
+                    }, 1500);
+                  }}
 
-              />
+                />
+                {playerState !== "ready" && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-white gap-3">
+                    <div className="h-10 w-10 border-[3px] border-white/30 border-t-white animate-spin rounded-full" />
+                    <div className="text-sm text-center px-4">
+                      {playerError || "Loading video on slow connection..."}
+                    </div>
+                  </div>
+                )}
+              </>
 
             )}
 

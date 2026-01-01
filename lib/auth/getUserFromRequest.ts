@@ -9,7 +9,25 @@ export async function getUserFromRequest() {
     const session = await auth();
     if (session?.user?.email) {
       const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-      if (user) return user;
+      if (user) {
+        // If we have a provider image in the session but DB image is empty, patch it so avatars render
+        if (!user.image && session.user.image) {
+          try {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { image: session.user.image },
+            });
+            return { ...user, image: session.user.image };
+          } catch (err) {
+            console.warn("Failed to sync session image onto user", err);
+          }
+        }
+        // Prefer session image if present so callers see the avatar immediately
+        if (session.user.image) {
+          return { ...user, image: session.user.image };
+        }
+        return user;
+      }
     }
 
     // 2. Try JWT token

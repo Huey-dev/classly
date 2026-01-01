@@ -29,6 +29,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.id = user.id ?? undefined;
         token.email = user.email;
+        // Preserve picture from OAuth provider so session has it later
+        // (NextAuth doesn't automatically add it when using a custom jwt callback)
+        // @ts-expect-error picture is allowed on token
+        token.picture = (user as any).image || (user as any).picture || token.picture;
         token.hasOnboarded = (user as SessionUser).hasOnboarded ?? false;
       }
       return token;
@@ -48,11 +52,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         user.email = token.email;
       }
 
+      // Carry through picture into the session payload so avatars render
+      // @ts-expect-error picture is allowed on token
+      if (token?.picture && typeof token.picture === "string") {
+        user.image = token.picture;
+      }
+
       user.hasOnboarded = typeof token.hasOnboarded === "boolean" ? token.hasOnboarded : false;
 
       return session;
     }
     ,
+  },
+  events: {
+    // Ensure we persist the provider avatar into our User record for downstream queries (courses, videos, etc.)
+    async signIn({ user, profile }) {
+      try {
+        const picture = (profile as any)?.picture || (profile as any)?.image;
+        if (picture && user?.id) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { image: picture as string },
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to sync profile image on sign-in", err);
+      }
+    },
   }
 
 })
